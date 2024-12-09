@@ -13,7 +13,7 @@ def plot():
     time_to_first_token = []
     success_rate = []
     requests_per_second = []
-    qps = []
+    concurrency = []
     for i in range(1, len(all_results)):
         success_rate.append(all_results[i]['successful_requests']*100/all_results[i]['total_requests'])
         request_number.append(all_results[i]["total_requests"])
@@ -23,17 +23,17 @@ def plot():
         tokens_per_second.append(all_results[i]["tokens_per_second"]["average"])
         time_to_first_token.append(all_results[i]["time_to_first_token"]["average"])
         requests_per_second.append(all_results[i]["requests_per_second"])
-        qps.append(all_results[i]["concurrency"])
+        concurrency.append(all_results[i]["concurrency"])
 
-    # plt.plot(request_number, total_time, label='total_time', color='blue', marker='o')
-    # plt.plot(request_number, total_output_tokens, label='total_output_tokens', color='orange', marker='s')
-    plt.plot(qps, latency, label='latency', color='green', marker='^')
-    plt.plot(qps, tokens_per_second, label='tokens_per_second', color='red', marker='x')
-    plt.plot(qps, time_to_first_token, label='time_to_first_token', color='purple', marker='*')
-    plt.plot(qps, success_rate, label='success_rate / %', color='pink', marker='s')
-    plt.plot(qps, requests_per_second, label='requests_per_second',color='black', marker='1')
+    plt.plot(concurrency, total_time, label='total_time', color='blue', marker='o')
+    # plt.plot(concurrency, total_output_tokens, label='total_output_tokens', color='orange', marker='s')
+    plt.plot(concurrency, latency, label='latency', color='green', marker='^')
+    plt.plot(concurrency, tokens_per_second, label='tokens_per_second', color='red', marker='x')
+    plt.plot(concurrency, time_to_first_token, label='time_to_first_token', color='purple', marker='*')
+    plt.plot(concurrency, success_rate, label='success_rate / %', color='pink', marker='s')
+    plt.plot(concurrency, requests_per_second, label='requests_per_second',color='black', marker='1')
     plt.title('test')
-    plt.xlabel('QPS')
+    plt.xlabel('concurrency')
     plt.legend()
     plt.show()
 
