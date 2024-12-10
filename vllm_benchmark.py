@@ -205,6 +205,9 @@ async def run_benchmark(num_requests, concurrency, request_timeout, output_token
 
     sample_content = sample_sharegpt_requests("./sharegpt_gpt4/sharegpt_gpt4.jsonl",
                                               100000)
+    if sample_content == None:
+        print("No sharegpt_gpt4")
+        return None
     logging.info(f"queue.length: {queue.qsize()}")
     # Create worker tasks
     workers = [asyncio.create_task(worker(client, semaphore, queue, results, output_tokens,
@@ -311,7 +314,10 @@ if __name__ == "__main__":
     results = asyncio.run(
         run_benchmark(args.num_requests, args.concurrency, args.request_timeout, args.output_tokens, client,
                       args.api_key, args.use_long_context))
-    print_results(results)
+    if results == None:
+        print("No results")
+    else:
+        print_results(results)
     # client = AsyncOpenAI(base_url=args.vllm_url)
     # print_results(results)
 else:

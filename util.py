@@ -1,5 +1,7 @@
 import json
+import os
 import random
+from asyncio import log
 
 import requests
 from sshtunnel import SSHTunnelForwarder
@@ -60,9 +62,18 @@ def sample_sharegpt_requests(
     prompts = []
     # prompt_lens = []
     # response_lens = []
+    if os.path.exists(dataset_path):
+        with open(dataset_path, 'r') as f:
+            print(f"{dataset_path} 文件已成功打开")
+    else:
+        print(f"文件 {dataset_path} 不存在")
+        return None
     with open(dataset_path) as f:
         for line in f:
-            data = json.loads(line)
+            if line.strip():
+                data = json.loads(line)
+            else:
+                print("Dataset file is empty")
             if len(data["conversations"]) >= 2:
                 prompt = data["conversations"][0]["value"]
                 prompts.append(prompt)
