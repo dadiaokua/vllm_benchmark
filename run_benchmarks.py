@@ -7,8 +7,8 @@ from openai import AsyncOpenAI
 
 async def run_all_benchmarks(vllm_url, api_key, distribution, qps):
     configurations = []
-    for i in range(80,201):
-        if i % 20 == 0:
+    for i in range(200,501):
+        if i % 50 == 0:
             configuration = {"num_requests": 1000, "concurrency": i, "output_tokens": 200}
             configurations.append(configuration)
         else:
