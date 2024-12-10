@@ -203,7 +203,7 @@ async def run_benchmark(num_requests, concurrency, request_timeout, output_token
     for _ in range(concurrency):
         await queue.put(None)
 
-    sample_content = sample_sharegpt_requests("/Users/myrick/dataset_hub/sharegpt_gpt4/sharegpt_gpt4.jsonl",
+    sample_content = sample_sharegpt_requests("./sharegpt_gpt4/sharegpt_gpt4.jsonl",
                                               100000)
     logging.info(f"queue.length: {queue.qsize()}")
     # Create worker tasks
