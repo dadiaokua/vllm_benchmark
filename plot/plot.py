@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-def plot_result(args_concurrency, args_num_requests, total_time):
+def plot_result(filename, args_concurrency, args_num_requests, total_time):
     with open('benchmark_results.json', 'r') as f:
         all_results = json.load(f)
 
@@ -74,12 +74,19 @@ def plot_result(args_concurrency, args_num_requests, total_time):
                 concurrency.append(all_result[i]["concurrency"])
                 qps.append(all_result[i]["qps"])
 
+            # 检查qps列表中的元素是否都相同
+            if len(set(qps)) == 1:  # 如果集合长度为1，说明所有元素都相同
+                # 将每个元素依次递增1
+                for i in range(len(qps)):
+                    qps[i] = qps[i] + i
+
             row_idx = (index // cols) * 3
             col_idx = index % cols
 
             # First subplot: total_time
             axs1[row_idx][col_idx].plot(qps, total_time, label='total_time', color='blue', marker='o')
-            axs1[row_idx][col_idx].set_title(f"Client {all_result[0]['client_index']} - Total Time: {sum(total_time):.2f}", pad=15)
+            axs1[row_idx][col_idx].set_title(
+                f"Client {all_result[0]['client_index']} - Total Time: {sum(total_time):.2f}", pad=15)
             axs1[row_idx][col_idx].set_xlabel('qps')
             axs1[row_idx][col_idx].legend()
             axs1[row_idx][col_idx].grid(True, linestyle='--', alpha=0.7)
@@ -243,8 +250,8 @@ def plot_result(args_concurrency, args_num_requests, total_time):
         os.makedirs('../figure')
 
     # 保存图片
-    fig1.savefig('figure/individual_clients.png', dpi=300, bbox_inches='tight')
-    fig2.savefig('figure/averaged_results.png', dpi=300, bbox_inches='tight')
+    fig1.savefig('figure/individual_clients' + filename + '.png', dpi=300, bbox_inches='tight')
+    fig2.savefig('figure/averaged_results' + filename + '.png', dpi=300, bbox_inches='tight')
 
     plt.show()
 

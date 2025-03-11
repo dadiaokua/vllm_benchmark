@@ -16,9 +16,7 @@ from transformers import AutoTokenizer
 
 
 async def run_all_benchmarks(local_port, api_key, distribution, configurations, concurrency,
-                             client_type, index, sleep):
-    all_results = []
-
+                             client_type, index, sleep, all_results):
     # 创建多个client实例
     clients = []
     if isinstance(local_port, list):
@@ -62,18 +60,19 @@ async def run_all_benchmarks(local_port, api_key, distribution, configurations, 
     client_index = client_type + "_" + str(index)
 
     for i, config in enumerate(configurations):
-        results = await wrapped_run_benchmark(config, concurrency, 20,
-                                              clients, distribution, client_index, formatted_json, i,
-                                              tokenizer)
+        results = await run_benchmark(config['num_requests'], concurrency, 20, config['output_tokens'],
+                                      clients, distribution, config['qps'], client_index, formatted_json, i, tokenizer)
         all_results.append(results)
         if results["successful_requests"] * 100 / results['total_requests'] < 70:
             # 如果成功率小于70%，后续配置都使用当前配置的qps
             current_qps = config['qps'] - 5
             for config_round, remaining_config in enumerate(configurations[i + 1:]):
                 remaining_config['qps'] = current_qps
-                results = await wrapped_run_benchmark(remaining_config, concurrency, 20,
-                                                      clients, distribution, client_index, formatted_json,
-                                                      config_round + i + 1, tokenizer)
+                results = await run_benchmark(remaining_config['num_requests'], concurrency, 20,
+                                              remaining_config['output_tokens'],
+                                              clients, distribution, remaining_config['qps'], client_index,
+                                              formatted_json,
+                                              config_round + i + 1, tokenizer)
                 all_results.append(results)
                 time.sleep(sleep)
             break
@@ -107,8 +106,6 @@ async def main():
                         help="URLs of the vLLM servers (can provide multiple)",
                         default=["http://127.0.0.1"])
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
-    parser.add_argument("--use_long_context", action="store_true",
-                        help="Use long context prompt pairs instead of short prompts", default=True)
     parser.add_argument("--distribution", type=str, help="Distribution of request")
     parser.add_argument("--short_qps", type=float, help="Qps of short request", required=True, default=1)
     parser.add_argument("--long_qps", type=float, help="Qps of long request", required=True, default=1)
@@ -127,8 +124,6 @@ async def main():
     print("\nBenchmark Configuration:")
     print("------------------------")
     print(f"vLLM Server URL: {args.vllm_url}")
-    print(f"API Key: {args.api_key}")
-    print(f"Use Long Context: {args.use_long_context}")
     print(f"Distribution: {args.distribution}")
     print(f"Short QPS: {args.short_qps}")
     print(f"Long QPS: {args.long_qps}")
@@ -144,31 +139,8 @@ async def main():
 
     servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
 
-    # 创建结果队列
-    result_queue = asyncio.Queue()
-
-    # 创建文件写入协程
-    async def write_results():
-        results = []
-        # 首次写入时清空文件
-        with open('benchmark_results.json', 'w') as f:
-            json.dump([], f)
-
-        while True:
-            result = await result_queue.get()
-            if result is None:
-                break
-            results.append(result)
-            # 实时写入文件
-            with open('benchmark_results.json', 'w') as f:
-                json.dump(results, f, indent=2)
-            result_queue.task_done()
-
-    # 启动写入任务
-    writer_task = asyncio.create_task(write_results())
-
-    # 新增：启动监控任务
-    monitor_task = setup_benchmark_monitoring(result_queue)
+    # 创建一个列表来存储所有结果
+    all_results = []
 
     short_configurations = []
     long_configurations = []
@@ -201,7 +173,7 @@ async def main():
 
     # 记录开始时间
     start_time = time.time()
-
+    all_results = []
     # 创建所有基准测试任务
     tasks = []
     for index in range(args.short_clients):
@@ -209,7 +181,7 @@ async def main():
             run_all_benchmarks(
                 args.local_port, args.api_key, args.distribution,
                 short_configurations, args.concurrency, 'short',
-                index, args.sleep
+                index, args.sleep, all_results
             )
         )
         tasks.append(task)
@@ -219,36 +191,52 @@ async def main():
             run_all_benchmarks(
                 args.local_port, args.api_key, args.distribution,
                 long_configurations, args.concurrency, 'long',
-                index, args.sleep
+                index, args.sleep, all_results
             )
         )
         tasks.append(task)
 
-    # 处理完成的任务结果
+    # 收集所有任务的结果
     for task in asyncio.as_completed(tasks):
         result = await task
-        await result_queue.put(result)
-
-    # 停止监控（在所有任务完成后）
-    _BENCHMARK_MONITOR.stop_monitoring()
-    await monitor_task
+        if result:  # 确保结果不为None
+            # 对于run_all_benchmarks返回的每个配置结果，添加到结果列表
+            if isinstance(result, list):
+                all_results.extend(result)
+            else:
+                all_results.append(result)
 
     # 记录结束时间
     end_time = time.time()
     total_time = end_time - start_time
     print(f"Total time: {total_time:.2f} seconds")
 
-    # 发送结束信号给写入协程
-    await result_queue.put(None)
-    # 等待写入任务完成
-    await writer_task
+    # 确保 results 目录存在
+    os.makedirs("results", exist_ok=True)
 
-    print("Benchmark results saved to benchmark_results.json")
+    # 生成文件名，拼接关键参数
+    filename = (
+        f"distribution_{args.distribution}_"
+        f"shortQPS_{args.short_qps}_longQPS_{args.long_qps}_"
+        f"range_{args.range_lower}-{args.range_higher}_"
+        f"concurrency_{args.concurrency}_requests_{args.num_requests}_"
+        f"shortClients_{args.short_clients}_longClients_{args.long_clients}_"
+    )
+
+    # 替换非法字符（确保文件名合法）
+    filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
+
+    # 打印最终的文件名
+    print(f"Saving benchmark results to: {filename}")
+
+    # 所有任务完成后，一次性写入结果到文件
+    with open("results/benchmark_" + filename, 'w') as f:
+        json.dump(all_results, f, indent=2)
 
     for server in servers:
         stop_tunnel(server)
 
-    plot_result(args.concurrency, args.num_requests, round(total_time, 2))
+    plot_result(filename, args.concurrency, args.num_requests, round(total_time, 2))
 
 
 if __name__ == "__main__":
