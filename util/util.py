@@ -5,6 +5,9 @@ import random
 import socket
 import threading
 import time
+
+import numpy as np
+import pandas as pd
 from typing import Dict, Any, List
 import re
 import subprocess
@@ -13,8 +16,9 @@ from transformers import AutoTokenizer, LlamaTokenizer, LlamaForCausalLM, AutoMo
 import torch
 import requests
 import os
-import multiprocessing
+from datasets import load_dataset
 from sshtunnel import SSHTunnelForwarder
+
 
 class QAJsonFormatter:
     def __init__(self):
@@ -94,7 +98,7 @@ class QAJsonFormatter:
         for jsonl_file in jsonl_files:
             task = asyncio.create_task(process_file(jsonl_file))
             tasks.append(task)
-        
+
         # 并发执行所有任务
         file_results = await asyncio.gather(*tasks)
 
@@ -112,6 +116,7 @@ class QAJsonFormatter:
         sampled_prompts = [prompts[idx] for idx in sampled_ids]
         return sampled_prompts
 
+
 def monitor_tunnel(server):
     """Monitor tunnel connection and restart if needed"""
     while True:
@@ -123,6 +128,7 @@ def monitor_tunnel(server):
             except Exception as e:
                 print(f"Error restarting tunnel: {e}")
         time.sleep(1)  # Check every 1 seconds
+
 
 def create_ssh_tunnel(host, remote_port, local_port, username, password, ssh_port):
     tunnel_servers = None
@@ -138,12 +144,12 @@ def create_ssh_tunnel(host, remote_port, local_port, username, password, ssh_por
         )
         tunnel_servers.start()
         print(f"SSH tunnel established on local port {local_port}")
-        
+
         # Start monitoring in separate thread
         monitor_thread = threading.Thread(target=monitor_tunnel, args=(tunnel_servers,))
         monitor_thread.daemon = True  # Thread will terminate when main program exits
         monitor_thread.start()
-        
+
     except Exception as e:
         print(f"Error creating SSH tunnel: {e}")
 
@@ -208,7 +214,17 @@ def open_jsonl_file(client_type, datasets):
         else:
             print(f"警告: {jsonl_file} 不在预定义的datasets中")
 
-    return dataset_path, filtered_files if filtered_files else None
+    timedata = load_dataset(
+        "/Users/myrick/dataset_hub/datasets--lmsys--chatbot_arena_conversations/snapshots/1b6335d42a1d2c7e34870c905d03ab964f7f2bd8/data/").data[
+        'train']['tstamp'].to_pylist()
+
+    for i in reversed(range(len(timedata))):
+        if i == 0:
+            timedata[i] = 0
+            break
+        timedata[i] = int(timedata[i] - timedata[i - 1])
+
+    return timedata, dataset_path, filtered_files if filtered_files else None
 
 
 def sample_sharegpt_requests(
@@ -322,7 +338,45 @@ def setup_vllm_servers(vllm_urls, local_port, remote_port):
                     ssh_password = json.load(f).get('password', '')
             except:
                 raise ValueError("SSH password not found in environment or config file")
-        server= create_ssh_tunnel(host, port, local_port[i], 'hjh', ssh_password, remote_port[i])
+        server = create_ssh_tunnel(host, port, local_port[i], 'hjh', ssh_password, remote_port[i])
         print(f"Established SSH tunnel for {url}")
         servers.append(server)
     return servers
+
+
+def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data):
+    if use_time_data:
+        target_time = time_data[request_count]
+    else:
+        # 计算这个请求应该在什么时间点发送（基于全局开始时间）
+        if distribution == "poisson":
+            # 泊松分布：请求之间的间隔遵循指数分布
+            intervals = [float(np.random.exponential(1 / rate_lambda)) for _ in range(request_count + 1)]
+            target_time = global_start_time + sum(intervals)
+        elif distribution == "normal":
+            # 正态分布：请求均匀分布，但有小的随机波动
+            target_time = global_start_time + (request_count / rate_lambda) + float(np.random.normal(0, 0.01))
+        else:
+            # 均匀分布：请求基本均匀，但有一定范围的随机性
+            jitter = np.random.uniform(-0.1, 0.1) / rate_lambda
+            target_time = global_start_time + (request_count / rate_lambda) + jitter
+
+    return target_time
+
+
+def save_results(f_result, s_result, RESULTS_FILE):
+    """将公平性结果追加写入 JSON 文件"""
+    new_entry = {"f_result": f_result, "s_result": s_result}
+
+    # 读取现有数据
+    with open(RESULTS_FILE, "r") as f:
+        data = json.load(f)
+
+    # 追加新数据
+    data.append(new_entry)
+
+    # **写回文件**
+    with open(RESULTS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+    print(f"结果已写入 {RESULTS_FILE}: {new_entry}")

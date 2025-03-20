@@ -8,7 +8,7 @@ import argparse
 import json
 import random
 
-from util.util import some_endpoint_test
+from util.util import some_endpoint_test, get_target_time
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -154,30 +154,15 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
         return None
 
 
-async def worker(selected_clients, semaphore, queue, results, output_tokens, client_index, tokenizer,
-                 request_timeout, rate_lambda, distribution, sample_content, config_round, worker_id):
+async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout, round_time,
+                 rate_lambda, distribution, sample_content, config_round, worker_id, time_data, use_time_data):
     # 使用全局时间基准点，而不是相对于上一个请求的时间
     global_start_time = time.time()
     request_count = 0
 
-    while True:
-        task_id = await queue.get()
-        if task_id is None:
-            queue.task_done()
-            break
-
-        # 计算这个请求应该在什么时间点发送（基于全局开始时间）
-        if distribution == "possion":
-            # 泊松分布：请求之间的间隔遵循指数分布
-            intervals = [float(np.random.exponential(1 / rate_lambda)) for _ in range(request_count + 1)]
-            target_time = global_start_time + sum(intervals)
-        elif distribution == "normal":
-            # 正态分布：请求均匀分布，但有小的随机波动
-            target_time = global_start_time + (request_count / rate_lambda) + float(np.random.normal(0, 0.01))
-        else:
-            # 均匀分布：请求基本均匀，但有一定范围的随机性
-            jitter = np.random.uniform(-0.1, 0.1) / rate_lambda
-            target_time = global_start_time + (request_count / rate_lambda) + jitter
+    while time.time() - global_start_time < round_time:
+        target_time = get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data,
+                                      time_data)
 
         # 计算需要等待的时间
         now = time.time()
@@ -191,8 +176,10 @@ async def worker(selected_clients, semaphore, queue, results, output_tokens, cli
         time_str = time.strftime('%H:%M:%S.%f', time.localtime(actual_time))[:-3]
         drift = actual_time - target_time
 
+        task_id = request_count  # 使用请求计数作为task_id
+
         logging.info(
-            f"Worker {worker_id}, {config_round + 1} round task {task_id}: Actual={time_str}, "
+            f"Client {client_index}, Worker {worker_id}, {config_round + 1} round task {task_id}: Actual={time_str}, "
             f"Target={time.strftime('%H:%M:%S.%f', time.localtime(target_time))[:-3]}, "
             f"Drift={drift:.3f}s, QPS target={rate_lambda}")
 
@@ -210,22 +197,27 @@ async def worker(selected_clients, semaphore, queue, results, output_tokens, cli
 
         # 增加请求计数
         request_count += 1
-        queue.task_done()
+
+    return request_count
 
 
 async def process_request(client, output_tokens, request_timeout, request, worker_id, tokenizer,
                           results, task_id, client_index, semaphore, config_round):
     async with semaphore:
-        logging.info(f"Starting worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
+        logging.info(
+            f"Starting worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
         try:
             result = await make_request(client, output_tokens, request_timeout, request, tokenizer)
             if result:
                 results.append(result)
             else:
-                logging.warning(f"Worker {worker_id} {config_round + 1} round Request {task_id} failed for client {client_index}")
+                logging.warning(
+                    f"Worker {worker_id} {config_round + 1} round Request {task_id} failed for client {client_index}")
         except Exception as e:
-            logging.error(f"Worker {worker_id} {config_round + 1} round Request {task_id} for client {client_index} raised an exception: {e}")
-        logging.info(f"Finished worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
+            logging.error(
+                f"Worker {worker_id} {config_round + 1} round Request {task_id} for client {client_index} raised an exception: {e}")
+        logging.info(
+            f"Finished worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
 
 
 def calculate_percentile(values, percentile, reverse=False):
@@ -236,44 +228,29 @@ def calculate_percentile(values, percentile, reverse=False):
     return np.percentile(values, percentile)
 
 
-async def run_benchmark(num_requests, concurrency, request_timeout,
-                        output_tokens, clients, distribution, qps,
-                        client_index, formatted_json, config_round, tokenizer):
+async def run_benchmark(concurrency, request_timeout, output_tokens, clients, distribution, qps, client_index,
+                        formatted_json, config_round, tokenizer, time_data, use_time_data, round_time):
     assert clients is not None, "Client must not be None"
     semaphore = asyncio.Semaphore(concurrency)
     results = []
-
-    # Calculate how many requests each worker should handle
-    requests_per_worker = num_requests // concurrency
-    remaining_requests = num_requests % concurrency
-
-    # Create worker tasks - each worker gets a specific number of requests
     workers = []
     start_time = time.time()
+    qps_per_worker = qps / concurrency
+    if qps < concurrency:
+        qps_per_worker = qps
+        concurrency = 1
     for worker_id in range(concurrency):
-        # Distribute the remaining requests among the first few workers
-        worker_requests = requests_per_worker + (1 if worker_id < remaining_requests else 0)
-
-        # Calculate the task IDs this worker will handle
-        start_id = worker_id * requests_per_worker + min(worker_id, remaining_requests)
-        task_ids = list(range(start_id, start_id + worker_requests))
-
-        # Create a dedicated queue for this worker
-        worker_queue = asyncio.Queue()
-        for task_id in task_ids:
-            await worker_queue.put(task_id)
-        await worker_queue.put(None)  # Sentinel to stop the worker
-
-        # Create the worker task
         worker_task = asyncio.create_task(
-            worker(clients, semaphore, worker_queue, results, output_tokens, client_index, tokenizer,
-                   request_timeout, qps / concurrency, distribution, formatted_json, config_round, worker_id)
+            worker(clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout, round_time,
+                   qps_per_worker, distribution, formatted_json, config_round, worker_id, time_data, use_time_data)
         )
         workers.append(worker_task)
 
-    logging.info(f"Created {concurrency} workers, each handling approximately {requests_per_worker} requests")
-    # Wait for all workers to complete
-    await asyncio.gather(*workers)
+    # Wait for all workers to complete and collect their results
+    worker_results = await asyncio.gather(*workers)
+
+    # Sum up all worker request counts
+    num_requests = sum(worker_results)
 
     end_time = time.time()
 
@@ -298,6 +275,7 @@ async def run_benchmark(num_requests, concurrency, request_timeout,
     ttft_percentiles = [calculate_percentile(ttft_list, p) for p in percentiles]
 
     return {
+        "time": end_time,
         "qps": qps,
         "total_requests": num_requests,
         "successful_requests": successful_requests,
@@ -371,7 +349,7 @@ if __name__ == "__main__":
         print("Error to connect to API")
     client = AsyncOpenAI(base_url=args.vllm_url + "/v1")
     results = asyncio.run(
-        run_benchmark(args.num_requests, args.concurrency, args.request_timeout, args.output_tokens, [client],
+        run_benchmark(args.concurrency, args.request_timeout, args.output_tokens, [client],
                       "passion", 1, 'short', 1, ""))
     if results == None:
         print("No results")

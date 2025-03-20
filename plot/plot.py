@@ -4,8 +4,40 @@ import os
 import matplotlib.pyplot as plt
 
 
+def calculate_time_and_qps(time, qps):
+    """Calculate adjusted time and format QPS with time."""
+    for i in reversed(range(len(time))):
+        if i == 0:
+            time[i] = int(0)
+            break
+        time[i] = int(time[i] - time[0])
+    return [f'{time[i]} [{qps[i]}]' for i in range(len(qps))]
+
+def plot_metrics_with_annotations(ax, x_data, y_data, label, color, marker, linewidth=2, xytext=(0,10), linestyle='-'):
+    """Plot metrics with annotations."""
+    ax.plot(x_data, y_data, label=label, color=color, marker=marker, linewidth=linewidth, linestyle=linestyle)
+    for i, (x, y) in enumerate(zip(x_data, y_data)):
+        ax.annotate(f'{y:.1f}',
+                   (x, y),
+                   textcoords="offset points", 
+                   xytext=xytext,
+                   ha='center')
+
+def setup_subplot(ax, title, qps_with_time, y_format=None, ylim=None):
+    """Setup common subplot properties."""
+    ax.set_title(title, pad=15)
+    ax.set_xticks(range(len(qps_with_time)))
+    ax.set_xticklabels(qps_with_time)
+    ax.set_xlabel('time [qps]')
+    if y_format:
+        ax.yaxis.set_major_formatter(y_format)
+    if ylim:
+        ax.set_ylim(ylim)
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.7)
+
 def plot_result(filename, args_concurrency, args_num_requests, total_time):
-    with open('benchmark_results.json', 'r') as f:
+    with open("results/" + filename, 'r') as f:
         all_results = json.load(f)
 
     if len(all_results) >= 1:
@@ -31,42 +63,51 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
         rows = math.ceil(len(sorted_all_results) / cols)
 
         # 调整第一个图的大小，减小右侧留白
-        fig1, axs1 = plt.subplots(rows * 3, cols, figsize=(cols * 8, rows * 12))
+        fig1, axs1 = plt.subplots(rows * 4, cols, figsize=(cols * 8, rows * 16))  # Changed from rows * 3 to rows * 4
         # 添加大标题显示参数信息
         fig1.suptitle(
-            f"Benchmark Results - Concurrency: {args_concurrency}, Requests Number: {args_num_requests}, Total Time: {total_time}",
+            f"Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}",
             fontsize=16, y=0.99)
 
         # Handle different axes array shapes
         if rows == 1 and cols == 1:
-            axs1 = axs1.reshape(3, 1)
+            axs1 = axs1.reshape(4, 1)  # Changed from 3 to 4
         else:
-            axs1 = axs1.reshape(rows * 3, cols)
+            axs1 = axs1.reshape(rows * 4, cols)  # Changed from rows * 3 to rows * 4
 
         # 调整第二个图的大小
-        fig2, axs2 = plt.subplots(3, 2, figsize=(20, 15))
+        fig2, axs2 = plt.subplots(4, 2, figsize=(20, 20))  # Changed from 3, 2 to 4, 2
         # 添加大标题显示参数信息
         fig2.suptitle(
-            f"Averaged Benchmark Results - Concurrency: {args_concurrency}, Requests Number: {args_num_requests}, "
+            f"Averaged Benchmark Results - Concurrency: {args_concurrency}, "
             f"Total Time: {total_time}", fontsize=16, y=0.99)
+
+        # 定义不同的线条样式
+        line_styles = ['-', '--', '-.', ':']
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+        markers = ['o', 's', '^', 'D', 'v', '*']
 
         # Plot individual client results
         for index, all_result in enumerate(sorted_all_results):
             request_number = []
-            total_time = []
+            success_rate = []
             total_output_tokens = []
+            total_input_tokens = []
             latency = []
             tokens_per_second = []
             time_to_first_token = []
-            success_rate = []
             requests_per_second = []
             concurrency = []
             qps = []
+            time = []
+            tokens_count = []
             for i in range(len(all_result)):
-                success_rate.append(all_result[i]['successful_requests'] / all_result[i]['total_requests'])
-                request_number.append(all_result[i]["total_requests"])
-                total_time.append(all_result[i]["total_time"])
+                tokens_count.append(all_result[i]['total_output_tokens'] + all_result[i]['total_input_tokens'])
                 total_output_tokens.append(all_result[i]["total_output_tokens"])
+                total_input_tokens.append(all_result[i]["total_input_tokens"])
+                time.append(all_result[i]['time'])
+                success_rate.append(all_result[i]['successful_requests'] * 100 / all_result[i]['total_requests'])
+                request_number.append(all_result[i]["total_requests"])
                 latency.append(all_result[i]["latency"]["p99"])
                 tokens_per_second.append(all_result[i]["tokens_per_second"]["p99"])
                 time_to_first_token.append(all_result[i]["time_to_first_token"]["p99"])
@@ -74,64 +115,56 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
                 concurrency.append(all_result[i]["concurrency"])
                 qps.append(all_result[i]["qps"])
 
-            # 检查qps列表中的元素是否都相同
-            if len(set(qps)) == 1:  # 如果集合长度为1，说明所有元素都相同
-                # 将每个元素依次递增1
-                for i in range(len(qps)):
-                    qps[i] = qps[i] + i
+            qps_with_time = calculate_time_and_qps(time, qps)
 
-            row_idx = (index // cols) * 3
+            row_idx = (index // cols) * 4
             col_idx = index % cols
 
-            # First subplot: total_time
-            axs1[row_idx][col_idx].plot(qps, total_time, label='total_time', color='blue', marker='o')
-            axs1[row_idx][col_idx].set_title(
-                f"Client {all_result[0]['client_index']} - Total Time: {sum(total_time):.2f}", pad=15)
-            axs1[row_idx][col_idx].set_xlabel('qps')
-            axs1[row_idx][col_idx].legend()
-            axs1[row_idx][col_idx].grid(True, linestyle='--', alpha=0.7)
+            # First subplot: tokens count
+            plot_metrics_with_annotations(axs1[row_idx][col_idx], range(len(qps)), tokens_count, 'tokens count', 
+                                       colors[0], markers[0], linestyle=line_styles[0])
+            plot_metrics_with_annotations(axs1[row_idx][col_idx], range(len(qps)), total_output_tokens, 'total_output_tokens',
+                                       colors[1], markers[1], linestyle=line_styles[1])
+            plot_metrics_with_annotations(axs1[row_idx][col_idx], range(len(qps)), total_input_tokens, 'total_input_tokens',
+                                       colors[2], markers[2], linestyle=line_styles[2])
+            setup_subplot(axs1[row_idx][col_idx], 
+                         f"Client {all_result[0]['client_index']} - Input and Output Tokens",
+                         qps_with_time,
+                         plt.FuncFormatter(lambda x, p: format(int(x), ',')))
 
-            # Second subplot: success_rate, tokens_per_second
-            axs1[row_idx + 1][col_idx].plot(qps, success_rate, label='success_rate', color='pink',
-                                            marker='s')
-            axs1[row_idx + 1][col_idx].plot(qps, tokens_per_second, label='tokens_per_second', color='red',
-                                            marker='x')
-            for i, (x, y) in enumerate(zip(qps, success_rate)):
-                axs1[row_idx + 1][col_idx].annotate(f'{y:.1f}',
-                                                    (x, y),
-                                                    textcoords="offset points",
-                                                    xytext=(0, 10),
-                                                    ha='center')
-            for i, (x, y) in enumerate(zip(qps, tokens_per_second)):
-                axs1[row_idx + 1][col_idx].annotate(f'{y:.1f}',
-                                                    (x, y),
-                                                    textcoords="offset points",
-                                                    xytext=(0, -15),
-                                                    ha='center')
-            axs1[row_idx + 1][col_idx].set_title(f"Client {all_result[0]['client_index']} - Success Rate & Tokens/s",
-                                                 pad=15)
-            axs1[row_idx + 1][col_idx].set_xlabel('qps')
-            axs1[row_idx + 1][col_idx].legend()
-            axs1[row_idx + 1][col_idx].grid(True, linestyle='--', alpha=0.7)
+            # Second subplot: success_rate
+            plot_metrics_with_annotations(axs1[row_idx + 1][col_idx], range(len(qps)), success_rate, 'success_rate',
+                                       colors[3], markers[3], linestyle=line_styles[0])
+            setup_subplot(axs1[row_idx + 1][col_idx],
+                         f"Client {all_result[0]['client_index']} - Success Rate",
+                         qps_with_time,
+                         ylim=(max(min(success_rate)-10,0), 100))
 
-            # Third subplot: latency, time_to_first_token, requests_per_second
-            axs1[row_idx + 2][col_idx].plot(qps, latency, label='latency', color='green', marker='^')
-            axs1[row_idx + 2][col_idx].plot(qps, time_to_first_token, label='time_to_first_token',
-                                            color='purple', marker='*')
-            axs1[row_idx + 2][col_idx].plot(qps, requests_per_second, label='requests_per_second',
-                                            color='black', marker='1')
-            axs1[row_idx + 2][col_idx].set_title(f"Client {all_result[0]['client_index']} - Latency Metrics", pad=15)
-            axs1[row_idx + 2][col_idx].set_xlabel('qps')
-            axs1[row_idx + 2][col_idx].legend()
-            axs1[row_idx + 2][col_idx].grid(True, linestyle='--', alpha=0.7)
+            # Third subplot: tokens per second
+            plot_metrics_with_annotations(axs1[row_idx + 2][col_idx], range(len(qps)), tokens_per_second, 'tokens_per_second',
+                                       colors[4], markers[4], xytext=(0,-15), linestyle=line_styles[0])
+            setup_subplot(axs1[row_idx + 2][col_idx],
+                         f"Client {all_result[0]['client_index']} - Tokens/s",
+                         qps_with_time)
+
+            # Fourth subplot: latency, time_to_first_token, requests_per_second
+            plot_metrics_with_annotations(axs1[row_idx + 3][col_idx], range(len(qps)), latency, 'latency',
+                                       colors[0], markers[0], linestyle=line_styles[0])
+            plot_metrics_with_annotations(axs1[row_idx + 3][col_idx], range(len(qps)), time_to_first_token, 'time_to_first_token',
+                                       colors[1], markers[1], linestyle=line_styles[1])
+            plot_metrics_with_annotations(axs1[row_idx + 3][col_idx], range(len(qps)), requests_per_second, 'requests_per_second',
+                                       colors[2], markers[2], linestyle=line_styles[2])
+            setup_subplot(axs1[row_idx + 3][col_idx],
+                         f"Client {all_result[0]['client_index']} - Latency Metrics",
+                         qps_with_time)
 
         # Remove extra subplots if any
         for j in range(len(sorted_all_results), cols):
-            if rows * 3 > 1:
-                for i in range(3):
-                    fig1.delaxes(axs1[-3 + i][j])
+            if rows * 4 > 1:
+                for i in range(4):
+                    fig1.delaxes(axs1[-4 + i][j])
             else:
-                for i in range(3):
+                for i in range(4):
                     fig1.delaxes(axs1[i][j])
 
         # Plot averaged results for short/long
@@ -142,96 +175,87 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
             if not results:
                 continue
 
-            avg_total_time = []
             avg_success_rate = []
             avg_tokens_per_second = []
             avg_latency = []
             avg_ttft = []
             avg_rps = []
+            avg_tokens_count = []
+            avg_total_output_tokens = []
+            avg_total_input_tokens = []
             concurrency = []
             qps = []
+            time = []
 
             # Get the shortest length among all results
             min_len = min(len(result) for result in results)
 
             for i in range(min_len):
-                qps.append(results[0][i]["qps"])
+                time.append(results[0][i]["time"])
+                # Multiply QPS by number of clients based on request type
+                if title == "Short Context Average":
+                    qps.append(results[0][i]["qps"] * len(short_results))
+                else:
+                    qps.append(results[0][i]["qps"] * len(long_results))
                 concurrency.append(results[0][i]["concurrency"])
-                total_time = [result[i]["total_time"] for result in results]
-                success_rate = [result[i]['successful_requests'] / result[i]['total_requests'] for result in
-                                results]
+
+                tokens_count = [result[i]['total_output_tokens'] + result[i]['total_input_tokens'] for result in results]
+                total_output_tokens = [result[i]['total_output_tokens'] for result in results]
+                total_input_tokens = [result[i]['total_input_tokens'] for result in results]
+                success_rate = [result[i]['successful_requests'] * 100 / result[i]['total_requests'] for result in results]
                 tokens_per_second = [result[i]["tokens_per_second"]["p99"] for result in results]
                 latency = [result[i]["latency"]["p99"] for result in results]
                 ttft = [result[i]["time_to_first_token"]["p99"] for result in results]
                 rps = [result[i]["requests_per_second"] for result in results]
 
-                avg_total_time.append(sum(total_time) / len(total_time))
+                avg_tokens_count.append(sum(tokens_count) / len(tokens_count))
+                avg_total_output_tokens.append(sum(total_output_tokens) / len(total_output_tokens))
+                avg_total_input_tokens.append(sum(total_input_tokens) / len(total_input_tokens))
                 avg_success_rate.append(sum(success_rate) / len(success_rate))
                 avg_tokens_per_second.append(sum(tokens_per_second) / len(tokens_per_second))
                 avg_latency.append(sum(latency) / len(latency))
                 avg_ttft.append(sum(ttft) / len(ttft))
                 avg_rps.append(sum(rps) / len(rps))
 
-            # Plot averaged metrics with enhanced styling
-            axs2[0, idx].plot(qps, avg_total_time, label='total_time', color='blue', marker='o', linewidth=2)
-            for i, (x, y) in enumerate(zip(qps, avg_total_time)):
-                axs2[0, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(0, 10),
-                                      ha='center')
-            axs2[0, idx].set_title(f"{title} - Total Time: {sum(avg_total_time):.2f}", pad=15)
-            axs2[0, idx].set_xlabel('qps')
-            axs2[0, idx].legend()
-            axs2[0, idx].grid(True, linestyle='--', alpha=0.7)
+            qps_with_time = calculate_time_and_qps(time, qps)
 
-            axs2[1, idx].plot(qps, avg_success_rate, label='success_rate', color='pink', marker='s',
-                              linewidth=2)
-            axs2[1, idx].plot(qps, avg_tokens_per_second, label='tokens_per_second', color='red', marker='x',
-                              linewidth=2)
-            for i, (x, y) in enumerate(zip(qps, avg_success_rate)):
-                axs2[1, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(0, 10),
-                                      ha='center')
-            for i, (x, y) in enumerate(zip(qps, avg_tokens_per_second)):
-                axs2[1, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(0, -15),
-                                      ha='center')
-            axs2[1, idx].set_title(f"{title} - Success Rate & Tokens/s", pad=15)
-            axs2[1, idx].set_xlabel('qps')
-            axs2[1, idx].legend()
-            axs2[1, idx].grid(True, linestyle='--', alpha=0.7)
+            # Plot tokens count with different line styles
+            plot_metrics_with_annotations(axs2[0, idx], range(len(qps)), avg_tokens_count, 'tokens count',
+                                       colors[0], markers[0], linestyle=line_styles[0])
+            plot_metrics_with_annotations(axs2[0, idx], range(len(qps)), avg_total_output_tokens, 'total_output_tokens',
+                                       colors[1], markers[1], linestyle=line_styles[1])
+            plot_metrics_with_annotations(axs2[0, idx], range(len(qps)), avg_total_input_tokens, 'total_input_tokens',
+                                       colors[2], markers[2], linestyle=line_styles[2])
+            setup_subplot(axs2[0, idx],
+                         f"{title} - Input and Output Tokens",
+                         qps_with_time,
+                         plt.FuncFormatter(lambda x, p: format(int(x), ',')))
 
-            axs2[2, idx].plot(qps, avg_latency, label='latency', color='green', marker='^', linewidth=2)
-            axs2[2, idx].plot(qps, avg_ttft, label='time_to_first_token', color='purple', marker='*',
-                              linewidth=2)
-            axs2[2, idx].plot(qps, avg_rps, label='requests_per_second', color='black', marker='1', linewidth=2)
-            for i, (x, y) in enumerate(zip(qps, avg_latency)):
-                axs2[2, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(0, 10),
-                                      ha='center')
-            for i, (x, y) in enumerate(zip(qps, avg_ttft)):
-                axs2[2, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(0, -15),
-                                      ha='center')
-            for i, (x, y) in enumerate(zip(qps, avg_rps)):
-                axs2[2, idx].annotate(f'{y:.1f}',
-                                      (x, y),
-                                      textcoords="offset points",
-                                      xytext=(15, 0),
-                                      ha='left')
-            axs2[2, idx].set_title(f"{title} - Latency Metrics", pad=15)
-            axs2[2, idx].set_xlabel('qps')
-            axs2[2, idx].legend()
-            axs2[2, idx].grid(True, linestyle='--', alpha=0.7)
+            # Plot success rate
+            plot_metrics_with_annotations(axs2[1, idx], range(len(qps)), avg_success_rate, 'success_rate',
+                                       colors[3], markers[3], linestyle=line_styles[0])
+            setup_subplot(axs2[1, idx],
+                         f"{title} - Success Rate",
+                         qps_with_time,
+                         ylim=(max(min(avg_success_rate)-10,0), 100))
+
+            # Plot tokens per second
+            plot_metrics_with_annotations(axs2[2, idx], range(len(qps)), avg_tokens_per_second, 'tokens_per_second',
+                                       colors[4], markers[4], xytext=(0,-15), linestyle=line_styles[0])
+            setup_subplot(axs2[2, idx],
+                         f"{title} - Tokens/s",
+                         qps_with_time)
+
+            # Plot latency metrics
+            plot_metrics_with_annotations(axs2[3, idx], range(len(qps)), avg_latency, 'latency',
+                                       colors[0], markers[0], linestyle=line_styles[0])
+            plot_metrics_with_annotations(axs2[3, idx], range(len(qps)), avg_ttft, 'time_to_first_token',
+                                       colors[1], markers[1], xytext=(0,-15), linestyle=line_styles[1])
+            plot_metrics_with_annotations(axs2[3, idx], range(len(qps)), avg_rps, 'requests_per_second',
+                                       colors[2], markers[2], xytext=(15,0), linestyle=line_styles[2])
+            setup_subplot(axs2[3, idx],
+                         f"{title} - Latency Metrics",
+                         qps_with_time)
 
     else:
         print("No results found")
@@ -257,4 +281,7 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
 
 
 if __name__ == "__main__":
-    plot_result(25, 2000, 0)
+    with open("plot_data.json", "r") as f:
+        data = json.load(f)
+
+    plot_result(data["filename"], data["concurrency"], data["num_requests"], data["total_time"])

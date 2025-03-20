@@ -1,6 +1,8 @@
 start_vllm_benchmark.sh
 benchmark_results.json
 
-sharegpt_gpt4/
+sharegpt_*/
 longbench/
 vLLM_performance-venv/
+tmp_result/
+results/
