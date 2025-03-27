@@ -8,7 +8,7 @@ from datetime import datetime
 
 import numpy as np
 
-from BenchmarkMonitor.BenchmarkMonitor import monitor_results
+from BenchmarkMonitor.BenchmarkMonitor import monitor_results, RESULTS_FILE
 from plot.plot import plot_result
 from util.util import open_jsonl_file, QAJsonFormatter, setup_vllm_servers, stop_tunnel
 from vllm_benchmark import run_benchmark
@@ -18,74 +18,214 @@ from transformers import AutoTokenizer
 
 async def run_all_benchmarks(local_port, api_key, distribution, request_timeout, configurations, concurrency,
                              client_type, round_time, index, sleep, result_queue, update_event, use_time_data):
-    all_results = []
-    # 创建多个client实例
-    clients = []
+    """Run benchmarks with given configurations and parameters"""
+    # Initialize clients
+    clients = initialize_clients(local_port)
+    
+    # Prepare data for benchmarking
+    formatted_json = await prepare_benchmark_data(client_type)
+    if not formatted_json:
+        return None
+        
+    # Run benchmarks for each configuration
+    client_index = f"{client_type}_{index}"
+    all_results = await execute_benchmark_configurations(
+        configurations, concurrency, request_timeout, clients, distribution,
+        client_index, formatted_json, sleep, result_queue, update_event,
+        client_type, round_time, use_time_data
+    )
+    
+    return all_results
+
+
+def initialize_clients(local_port):
+    """Initialize OpenAI clients based on port configuration"""
     if isinstance(local_port, list):
-        for port in local_port:
-            clients.append(AsyncOpenAI(base_url="http://localhost:" + str(port) + "/v1"))
+        return [AsyncOpenAI(base_url=f"http://localhost:{port}/v1") for port in local_port]
     else:
-        clients.append(AsyncOpenAI(base_url="http://localhost:" + str(local_port) + "/v1"))
+        return [AsyncOpenAI(base_url=f"http://localhost:{local_port}/v1")]
 
+
+async def prepare_benchmark_data(client_type):
+    """Prepare and format data for benchmarking"""
+    # Load dataset configuration
     dataset2prompt = json.load(open("config/dataset2prompt.json", "r"))
-
+    
+    # Get data files
     time_data, data_path, jsonl_files = open_jsonl_file(client_type, dataset2prompt)
-
-    formatter = QAJsonFormatter()
-    formatted_json = []
-    # 创建一个新的列表，用于存储长度小于8192的项
-    filtered_json = []
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # 或 "true"
+    
+    # Initialize tokenizer
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
     tokenizer = AutoTokenizer.from_pretrained(
         '/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659',
         trust_remote_code=True)
+    
+    # Format and filter data
     try:
+        formatter = QAJsonFormatter()
+        max_samples = 500000 if client_type == 'long' else 100000
+        formatted_json = await formatter.format_qa_json(
+            tokenizer, dataset2prompt, 5000, jsonl_files, data_path, max_samples, client_type)
+        
+        # Filter by length
+        filtered_json = []
         str_count = 0
-        formatted_json = await formatter.format_qa_json(tokenizer, dataset2prompt, 5000,
-                                                        jsonl_files, data_path,
-                                                        500000 if client_type == 'long' else 100000, client_type)
-        for i, item in enumerate(formatted_json):
+        for item in formatted_json:
             if len(str(item)) < 4000:
-                str_count = str_count + 1
+                str_count += 1
                 filtered_json.append(item)
-        print(f'request count:', str_count)
+        print(f'request count: {str_count}')
+        
+        return formatted_json
     except Exception as e:
         print(f"Error: {str(e)}")
         print("详细错误信息:")
         print(traceback.format_exc())
-
-    # sample_content = sample_sharegpt_requests(data_path, 100000)
-    if formatted_json is None:
-        print("No json formatted")
         return None
 
-    client_index = client_type + "_" + str(index)
 
+async def execute_benchmark_configurations(configurations, concurrency, request_timeout, clients, distribution,
+                                          client_index, formatted_json, sleep, result_queue, update_event,
+                                          client_type, round_time, use_time_data):
+    """Execute benchmarks for all configurations"""
+    all_results = []
+    
+    # Get tokenizer for benchmark
+    tokenizer = AutoTokenizer.from_pretrained(
+        '/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659',
+        trust_remote_code=True)
+    
+    # Get time data
+    time_data, _, _ = open_jsonl_file(client_type, json.load(open("config/dataset2prompt.json", "r")))
+    
     for i, config in enumerate(configurations):
-        results = await run_benchmark(concurrency, request_timeout, config['output_tokens'],
-                                      clients, distribution, config['qps'], client_index, formatted_json, i, tokenizer,
-                                      time_data, use_time_data, round_time)
+        # Run benchmark with current configuration
+        results = await run_benchmark(
+            concurrency, request_timeout, config['output_tokens'],
+            clients, distribution, config['qps'], client_index, 
+            formatted_json, i, tokenizer, time_data, use_time_data, round_time
+        )
+        
+        # Store and update results
         await result_queue.put(results)
         all_results.append(results)
         update_event.set()
-        if results["successful_requests"] * 100 / results['total_requests'] < 70:
-            # 如果成功率小于70%，后续配置都使用当前配置的qps
-            current_qps = config['qps'] - 5
-            for config_round, remaining_config in enumerate(configurations[i + 1:]):
-                remaining_config['qps'] = current_qps
-                results = await run_benchmark(concurrency, request_timeout,
-                                              remaining_config['output_tokens'], clients, distribution,
-                                              remaining_config['qps'], client_index, formatted_json,
-                                              config_round + i + 1, tokenizer, time_data, use_time_data, round_time)
-                await result_queue.put(results)
-                all_results.append(results)
-                update_event.set()
-                time.sleep(sleep)
+        
+        # Check success rate and adjust if needed
+        if should_reduce_qps(results):
+            await handle_reduced_qps(
+                results, configurations[i+1:], i, concurrency, request_timeout, clients,
+                distribution, client_index, formatted_json, tokenizer, time_data,
+                use_time_data, round_time, sleep, result_queue, update_event, all_results
+            )
             break
-        time.sleep(sleep)  # Wait a bit between runs to let the system cool down
+            
+        time.sleep(sleep)  # Wait between runs to let the system cool down
 
     return all_results
 
+
+def should_reduce_qps(results):
+    """Determine if QPS should be reduced based on success rate"""
+    success_rate = results["successful_requests"] * 100 / results['total_requests']
+    return success_rate < 70
+
+
+async def handle_reduced_qps(current_results, remaining_configs, current_index, concurrency, request_timeout, 
+                            clients, distribution, client_index, formatted_json, tokenizer, time_data,
+                            use_time_data, round_time, sleep, result_queue, update_event, all_results):
+    """Handle remaining configurations with reduced QPS"""
+    current_qps = current_results['qps'] - 5
+    
+    for config_round, remaining_config in enumerate(remaining_configs):
+        remaining_config['qps'] = current_qps
+        results = await run_benchmark(
+            concurrency, request_timeout, remaining_config['output_tokens'], 
+            clients, distribution, current_qps, client_index, 
+            formatted_json, config_round + current_index + 1, tokenizer, 
+            time_data, use_time_data, round_time
+        )
+        await result_queue.put(results)
+        all_results.append(results)
+        update_event.set()
+        time.sleep(sleep)
+
+
+async def setup_benchmark_tasks(args, all_results, update_event, short_configurations, long_configurations):
+    """Setup and create benchmark tasks"""
+    tasks = []
+    
+    # Create monitor task
+    monitor_task = asyncio.create_task(monitor_results(all_results, update_event, 
+        len(short_configurations), args.short_clients + args.long_clients))
+    tasks.append(monitor_task)
+
+    # Create short request tasks
+    for index in range(args.short_clients):
+        task = asyncio.create_task(
+            run_all_benchmarks(
+                args.local_port, args.api_key, args.distribution, args.request_timeout,
+                short_configurations, args.concurrency, 'short', args.round_time,
+                index, args.sleep, all_results, update_event, args.use_time_data
+            )
+        )
+        tasks.append(task)
+
+    # Create long request tasks
+    for index in range(args.long_clients):
+        task = asyncio.create_task(
+            run_all_benchmarks(
+                args.local_port, args.api_key, args.distribution, args.request_timeout,
+                long_configurations, args.concurrency, 'long', args.round_time,
+                index, args.sleep, all_results, update_event, args.use_time_data
+            )
+        )
+        tasks.append(task)
+
+    return tasks, monitor_task
+
+def generate_configurations(args):
+    """Generate benchmark configurations"""
+    short_configurations = []
+    long_configurations = []
+    
+    for qps_value in np.arange(args.range_lower, args.range_higher + 1.1, 1):
+        if args.short_qps == 0 and args.long_qps == 0:
+            print("[Error]: short_qps and long_qps cannot be 0 at the same time")
+            exit(1)
+            
+        qps_value = round(qps_value, 1)
+        
+        if args.short_qps == 0:
+            if abs(qps_value % args.long_qps) < 1e-6:
+                configuration = {"num_requests": args.num_requests, "qps": args.range_lower, "output_tokens": 200}
+                short_configurations.append(configuration)
+        else:
+            if abs(qps_value % args.short_qps) < 1e-6:
+                configuration = {"num_requests": args.num_requests, "qps": int(qps_value), "output_tokens": 200}
+                short_configurations.append(configuration)
+
+        if args.long_qps == 0:
+            if abs(qps_value % args.short_qps) < 1e-6:
+                configuration = {"num_requests": args.num_requests, "qps": args.range_lower, "output_tokens": 200}
+                long_configurations.append(configuration)
+        else:
+            if abs(qps_value % args.long_qps) < 1e-6:
+                configuration = {"num_requests": args.num_requests, "qps": int(qps_value), "output_tokens": 200}
+                long_configurations.append(configuration)
+                
+    return short_configurations, long_configurations
+
+def save_benchmark_results(filename, benchmark_results, plot_data):
+    """Save benchmark results to files"""
+    os.makedirs("results", exist_ok=True)
+    print(f"Saving benchmark results to: results/{filename}")
+
+    with open("results/" + filename, 'w') as f:
+        json.dump(benchmark_results, f, indent=2)
+
+    with open("tmp_result/plot_data.json", "w") as f:
+        json.dump(plot_data, f, indent=4)
 
 async def main():
     parser = argparse.ArgumentParser(description="Run vLLM benchmarks with various configurations")
@@ -133,106 +273,46 @@ async def main():
 
     servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
 
-    # 创建一个列表来存储所有结果
-    all_results = []
+    with open(RESULTS_FILE, "w") as f:
+        json.dump([], f)
 
-    short_configurations = []
-    long_configurations = []
-    # 创建范围时使用整数并设置步长为1
-    for qps_value in np.arange(args.range_lower, args.range_higher + 1.1, 1):  # 加0.1是为了包含上限
-        if args.short_qps == 0 and args.long_qps == 0:
-            print("[Error]: short_qps and long_qps cannot be 0 at the same time")
-            exit(1)
-        qps_value = round(qps_value, 1)  # 防止浮点数精度问题
-        if args.short_qps == 0:
-            if abs(qps_value % args.long_qps) < 1e-6:
-                configuration = {"num_requests": args.num_requests, "qps": args.range_lower, "output_tokens": 200}
-                short_configurations.append(configuration)
-        else:
-            if abs(qps_value % args.short_qps) < 1e-6:
-                configuration = {"num_requests": args.num_requests, "qps": int(qps_value), "output_tokens": 200}
-                short_configurations.append(configuration)
-
-        if args.long_qps == 0:
-            if abs(qps_value % args.short_qps) < 1e-6:
-                configuration = {"num_requests": args.num_requests, "qps": args.range_lower, "output_tokens": 200}
-                long_configurations.append(configuration)
-        else:
-            if abs(qps_value % args.long_qps) < 1e-6:
-                configuration = {"num_requests": args.num_requests, "qps": int(qps_value), "output_tokens": 200}
-                long_configurations.append(configuration)
-
+    all_results = asyncio.Queue()
+    update_event = asyncio.Event()
+    
+    short_configurations, long_configurations = generate_configurations(args)
     print(f"short_configurations: {short_configurations}")
     print(f"long_configurations: {long_configurations}")
 
-    # 记录开始时间
     start_time = time.time()
-    all_results = asyncio.Queue()  # 用队列存储结果
-    update_event = asyncio.Event()  # 用事件控制更新触发
-    # 创建所有基准测试任务
-    tasks = []
-
-    # 创建监控任务
-    monitor_task = asyncio.create_task(monitor_results(all_results, update_event, len(short_configurations), args.short_clients +  args.long_clients))
-    tasks.append(monitor_task)
+    tasks, monitor_task = await setup_benchmark_tasks(args, all_results, update_event, 
+                                                    short_configurations, long_configurations)
 
     try:
-        # 设置任务超时时间为120分钟
         benchmark_timeout = 3600 * 2
-
-        # 创建短请求任务
-        for index in range(args.short_clients):
-            task = asyncio.create_task(
-                run_all_benchmarks(
-                    args.local_port, args.api_key, args.distribution, args.request_timeout,
-                    short_configurations, args.concurrency, 'short', args.round_time,
-                    index, args.sleep, all_results, update_event, args.use_time_data
-                )
-            )
-            tasks.append(task)
-
-        # 创建长请求任务  
-        for index in range(args.long_clients):
-            task = asyncio.create_task(
-                run_all_benchmarks(
-                    args.local_port, args.api_key, args.distribution, args.request_timeout,
-                    long_configurations, args.concurrency, 'long', args.round_time,
-                    index, args.sleep, all_results, update_event, args.use_time_data
-                )
-            )
-            tasks.append(task)
-
-        # 等待所有任务完成,添加超时控制
         await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
 
     except asyncio.TimeoutError:
         print(f"Tasks did not complete within {benchmark_timeout} seconds, cancelling...")
-        # 取消所有未完成的任务
         for task in tasks:
             if not task.done():
                 task.cancel()
-        # 等待取消操作完成
         await asyncio.gather(*tasks, return_exceptions=True)
     except Exception as e:
         print(f"An error occurred: {e}")
-        # 取消所有任务
         for task in tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    # 从task的结果中获取所有结果
     all_benchmark_results = []
-    for task in tasks[1:]:  # 跳过monitor_task
+    for task in tasks[1:]:
         if task.done():
             result = task.result()
-            if result:  # 确保结果不为None
+            if result:
                 all_benchmark_results.append(result)
 
-    # 更新all_results变量
     benchmark_results = all_benchmark_results
 
-    # 记录结束时间
     end_time = time.time()
     total_time = end_time - start_time
     print(f"Total time: {total_time:.2f} seconds")
@@ -240,25 +320,10 @@ async def main():
     start_datetime = datetime.fromtimestamp(start_time)
     end_datetime = datetime.fromtimestamp(end_time)
 
-    # 生成文件名，拼接关键参数
     filename = (
         f"benchmark_start_{start_datetime.strftime("%H:%M")}_end_{end_datetime.strftime("%H:%M")}.json"
     )
-
-    # 替换非法字符（确保文件名合法）
     filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
-
-    # 确保 results 目录存在
-    os.makedirs("results", exist_ok=True)
-    # 打印最终的文件名
-    print(f"Saving benchmark results to: results/{filename}")
-
-    # 所有任务完成后，一次性写入结果到文件
-    with open("results/" + filename, 'w') as f:
-        json.dump(benchmark_results, f, indent=2)
-
-    for server in servers:
-        stop_tunnel(server)
 
     plot_data = {
         "filename": filename,
@@ -267,13 +332,12 @@ async def main():
         "total_time": round(total_time, 2)
     }
 
-    with open("tmp_result/plot_data.json", "w") as f:
-        json.dump(plot_data, f, indent=4)
+    save_benchmark_results(filename, benchmark_results, plot_data)
 
-    # 取消 monitor 任务
+    for server in servers:
+        stop_tunnel(server)
+
     monitor_task.cancel()
-
-    # 等待 monitor_task 退出
     try:
         await monitor_task
     except asyncio.CancelledError:

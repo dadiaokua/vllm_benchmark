@@ -366,7 +366,14 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
 
 def save_results(f_result, s_result, RESULTS_FILE):
     """将公平性结果追加写入 JSON 文件"""
-    new_entry = {"f_result": f_result, "s_result": s_result}
+    # 获取当前时间并格式化为24小时制，精确到分钟
+    current_time = time.strftime("%H:%M", time.localtime())
+    
+    new_entry = {
+        "f_result": f_result, 
+        "s_result": s_result,
+        "time": current_time
+    }
 
     # 读取现有数据
     with open(RESULTS_FILE, "r") as f:

@@ -138,7 +138,7 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
             setup_subplot(axs1[row_idx + 1][col_idx],
                          f"Client {all_result[0]['client_index']} - Success Rate",
                          qps_with_time,
-                         ylim=(max(min(success_rate)-10,0), 100))
+                         ylim=(max(min(success_rate)-10,0), 105))
 
             # Third subplot: tokens per second
             plot_metrics_with_annotations(axs1[row_idx + 2][col_idx], range(len(qps)), tokens_per_second, 'tokens_per_second',
@@ -237,7 +237,7 @@ def plot_result(filename, args_concurrency, args_num_requests, total_time):
             setup_subplot(axs2[1, idx],
                          f"{title} - Success Rate",
                          qps_with_time,
-                         ylim=(max(min(avg_success_rate)-10,0), 100))
+                         ylim=(max(min(avg_success_rate)-10,0), 105))
 
             # Plot tokens per second
             plot_metrics_with_annotations(axs2[2, idx], range(len(qps)), avg_tokens_per_second, 'tokens_per_second',

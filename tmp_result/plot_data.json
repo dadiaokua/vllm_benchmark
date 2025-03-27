@@ -1,6 +1,6 @@
 {
-    "filename": "benchmark_start_11-12_end_11-20.json",
+    "filename": "benchmark_start_09-48_end_09-57.json",
     "concurrency": 2,
     "num_requests": 100,
-    "total_time": 432.13
+    "total_time": 531.91
 }
