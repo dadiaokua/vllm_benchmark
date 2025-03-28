@@ -1,8 +1,7 @@
 import asyncio
 import random
 
-from util.util import initialize_clients
-from vllm_benchmark import run_benchmark
+from util.RequestUtil import run_benchmark
 
 
 class BenchmarkClient:
@@ -10,7 +9,7 @@ class BenchmarkClient:
 
     def __init__(self, client_type, client_index, configurations, port, api_key, tokenizer,
                  distribution, request_timeout, concurrency, round_time, sleep, time_data,
-                 result_queue, update_event, formatted_json, openAI_client, use_time_data=0):
+                 result_queue, update_event, formatted_json, OpenAI_client, use_time_data=0):
         """Initialize a benchmark client
 
         Args:
@@ -48,7 +47,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.latency_slo = random.randint(0, 10)
 
-        self.openAI_client = openAI_client
+        self.openAI_client = OpenAI_client
 
         # State tracking
         self.current_config_index = 0
@@ -82,15 +81,15 @@ class BenchmarkClient:
 
             # Run benchmark with current configuration
             print(f"Client {self.client_id}: Running configuration {i + 1}/{len(self.configurations)}: {config}")
-            results = await run_benchmark(
-                self.concurrency, self.request_timeout, config['output_tokens'], self.openAI_client,
+            result = await run_benchmark(
+                self, self.concurrency, self.request_timeout, config['output_tokens'], self.openAI_client,
                 self.distribution, config['qps'], self.client_id,
                 self.formatted_json, i, self.tokenizer, self.time_data, self.use_time_data, self.round_time
             )
 
             # Store and update results
-            self.results.append(results)
-            await self.result_queue.put(results)
+            self.results.append(result)
+            await self.result_queue.put(1)
             self.update_event.set()
 
             # Give monitor time to process

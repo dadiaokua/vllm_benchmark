@@ -40,12 +40,6 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
     tasks = []
     clients = []
 
-    # Create monitor task
-    monitor_task = asyncio.create_task(monitor_results(all_results, update_event,
-                                                       len(short_configurations),
-                                                       args.short_clients + args.long_clients))
-    tasks.append(monitor_task)
-
     short_formatted_json, time_data = await prepare_benchmark_data('short')
     long_formatted_json, time_data = await prepare_benchmark_data('long')
 
@@ -72,7 +66,7 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
             update_event=update_event,
             use_time_data=args.use_time_data,
             formatted_json=short_formatted_json,
-            openAI_client=openAI_client,
+            OpenAI_client=openAI_client,
             tokenizer=tokenizer,
             time_data=time_data
         )
@@ -96,11 +90,18 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
             update_event=update_event,
             use_time_data=args.use_time_data,
             formatted_json=long_formatted_json,
-            openAI_client=openAI_client,
-            tokenizer=tokenizer
+            OpenAI_client=openAI_client,
+            tokenizer=tokenizer,
+            time_data=time_data
         )
         clients.append(client)
         tasks.append(client.start())
+
+    # Create monitor task
+    monitor_task = asyncio.create_task(monitor_results(clients, all_results, update_event,
+                                                       len(short_configurations),
+                                                       args.short_clients + args.long_clients))
+    tasks.insert(0, monitor_task)
 
     return tasks, monitor_task, clients
 
