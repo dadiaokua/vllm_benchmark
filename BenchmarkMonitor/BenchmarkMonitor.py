@@ -1,9 +1,10 @@
 import asyncio
 import json
 
-from util.util import save_results
+from util.FileSaveUtil import save_results
 
 RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
+
 
 async def monitor_results(result_queue, update_event, max_loops, client_count):
     loop_count = 0  # 计数器
@@ -16,7 +17,7 @@ async def monitor_results(result_queue, update_event, max_loops, client_count):
         print('Waiting for update event...')
         await update_event.wait()  # 等待新的更新
         print('Update event received')
-        
+
         # 重要：清除事件状态，这样下次循环会真正等待
         update_event.clear()
 
@@ -28,7 +29,7 @@ async def monitor_results(result_queue, update_event, max_loops, client_count):
             loop_count += 1  # 计数+1
             print(f'Completed loop {loop_count}')
             print(f'Current tmp_results length: {len(tmp_results)}')
-            
+
             if len(tmp_results) == client_count:
                 print(f'Reached client_count={client_count}, calculating fairness...')
                 f_result, s_result = await fairness_result(tmp_results)
@@ -37,7 +38,7 @@ async def monitor_results(result_queue, update_event, max_loops, client_count):
                 print(f'Results saved to {RESULTS_FILE}')
                 tmp_results = []
                 print('Cleared tmp_results')
-            
+
             result_queue.task_done()  # 标记任务完成
             print('Task marked as done')
 
@@ -45,7 +46,8 @@ async def monitor_results(result_queue, update_event, max_loops, client_count):
     print(f"Final loop count: {loop_count}")
 
 
-def calculate_Jains_index(service):
+def calculate_Jains_index(service_list):
+    service = [entry["service"] for entry in service_list]
     n = len(service)
     if n == 0:
         return 0  # Avoid division by zero
@@ -61,6 +63,7 @@ async def fairness_result(tmp_results):
     print(f"Fairness result: {tmp_results}")
     service = []
     for result in tmp_results:
-        service.append(result["total_input_tokens"] + 2 * result["total_output_tokens"])
+        service.append({"service": result["total_input_tokens"] + 2 * result["total_output_tokens"],
+                        "client": result["client_index"]})
     tmp_jains_index = calculate_Jains_index(service)
     return tmp_jains_index, service

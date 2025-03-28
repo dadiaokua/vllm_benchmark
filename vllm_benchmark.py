@@ -8,7 +8,8 @@ import argparse
 import json
 import random
 
-from util.util import some_endpoint_test, get_target_time
+from util.RequestDistributionUtil import get_target_time
+from util.TunnelUtil import some_endpoint_test
 
 # Set up logging
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
