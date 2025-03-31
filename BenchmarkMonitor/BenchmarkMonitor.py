@@ -1,8 +1,9 @@
 import asyncio
 import json
 
+from config.Config import GLOBAL_CONFIG
 from util.FileSaveUtil import save_results
-from util.MathUtil import fairness_result
+from util.MathUtil import fairness_result, is_fairness
 
 RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 
@@ -24,7 +25,11 @@ async def monitor_results(clients, result_queue, update_event, max_loops, client
 
         while not result_queue.empty():  # 如果队列里有结果
             print(f'Queue not empty, getting next result...')
-            result = await result_queue.get()  # 获取队列中的结果
+            try:
+                result = await asyncio.wait_for(result_queue.get(), timeout=10)  # 10秒超时
+            except asyncio.TimeoutError:
+                print("Timeout while waiting for result.")
+                continue
             tmp_results.append(result)
             loop_count += 1  # 计数+1
             print(f'Completed loop {loop_count}')
@@ -33,11 +38,17 @@ async def monitor_results(clients, result_queue, update_event, max_loops, client
             if len(tmp_results) == client_count:
                 print(f'Reached client_count={client_count}, calculating fairness...')
                 f_result, s_result = await fairness_result(clients)
+                if GLOBAL_CONFIG["whether_fairness"]:
+                    await is_fairness(clients)
                 # **追加到文件**
                 save_results(f_result, s_result, RESULTS_FILE)
                 print(f'Results saved to {RESULTS_FILE}')
                 tmp_results = []
                 print('Cleared tmp_results')
+
+                # 通知 run_all_benchmarks 处理已完成
+                for client in clients:
+                    client.monitor_done_event.set()
 
             result_queue.task_done()  # 标记任务完成
             print('Task marked as done')

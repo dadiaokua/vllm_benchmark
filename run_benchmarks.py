@@ -3,39 +3,17 @@ import json
 import time
 import argparse
 from datetime import datetime
-
 from transformers import AutoTokenizer
-
 from BenchmarkClient.BenchmarkClient import BenchmarkClient
 from BenchmarkMonitor.BenchmarkMonitor import monitor_results, RESULTS_FILE
-from plot.plot import plot_result
+from plot.plotMain import plot_result
+from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
 from util.JsonFormatterUtil import prepare_benchmark_data
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
-from util.util import generate_configurations, initialize_clients
 
 
-# async def handle_reduced_qps(current_results, remaining_configs, current_index, concurrency, request_timeout,
-#                             clients, distribution, client_index, formatted_json, tokenizer, time_data,
-#                             use_time_data, round_time, sleep, result_queue, update_event, all_results):
-#     """Handle remaining configurations with reduced QPS"""
-#     current_qps = current_results['qps'] - 5
-
-#     for config_round, remaining_config in enumerate(remaining_configs):
-#         remaining_config['qps'] = current_qps
-#         results = await run_benchmark(
-#             concurrency, request_timeout, remaining_config['output_tokens'], 
-#             clients, distribution, current_qps, client_index, 
-#             formatted_json, config_round + current_index + 1, tokenizer, 
-#             time_data, use_time_data, round_time
-#         )
-#         await result_queue.put(results)
-#         all_results.append(results)
-#         update_event.set()
-#         time.sleep(sleep)
-
-
-async def setup_benchmark_tasks(args, all_results, update_event, short_configurations, long_configurations):
+async def setup_benchmark_tasks(args, all_results, update_event):
     """Setup and create benchmark tasks"""
     tasks = []
     clients = []
@@ -54,7 +32,7 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
-            configurations=short_configurations,
+            qps=args.short_qps,
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -68,7 +46,8 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
             formatted_json=short_formatted_json,
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
-            time_data=time_data
+            time_data=time_data,
+            round=args.round
         )
         clients.append(client)
         tasks.append(client.start())
@@ -78,7 +57,7 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
-            configurations=long_configurations,
+            qps=args.long_qps,
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -92,14 +71,14 @@ async def setup_benchmark_tasks(args, all_results, update_event, short_configura
             formatted_json=long_formatted_json,
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
-            time_data=time_data
+            time_data=time_data,
+            round=args.round
         )
         clients.append(client)
         tasks.append(client.start())
 
     # Create monitor task
-    monitor_task = asyncio.create_task(monitor_results(clients, all_results, update_event,
-                                                       len(short_configurations),
+    monitor_task = asyncio.create_task(monitor_results(clients, all_results, update_event, args.round,
                                                        args.short_clients + args.long_clients))
     tasks.insert(0, monitor_task)
 
@@ -113,10 +92,8 @@ async def main():
                         default=["http://127.0.0.1"])
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
     parser.add_argument("--distribution", type=str, help="Distribution of request")
-    parser.add_argument("--short_qps", type=int, help="Qps of short request", required=True, default=1)
-    parser.add_argument("--long_qps", type=int, help="Qps of long request", required=True, default=1)
-    parser.add_argument("--range_lower", type=int, help="Lower", default=1)
-    parser.add_argument("--range_higher", type=int, help="Higher", default=400)
+    parser.add_argument("--short_qps", type=int, help="Qps of short client request", required=True, default=1)
+    parser.add_argument("--long_qps", type=int, help="Qps of long client request", required=True, default=1)
     parser.add_argument("--concurrency", type=int, help="concurrency", default=50)
     parser.add_argument("--num_requests", type=int, help="Number of requests", default=1000)
     parser.add_argument("--short_clients", type=int, help="Number of client send short context", default=1)
@@ -127,6 +104,7 @@ async def main():
     parser.add_argument("--use_time_data", type=int, help="whether use time data", default=0)
     parser.add_argument("--request_timeout", type=int, default=5,
                         help="Timeout for each request in seconds (default: 30)")
+    parser.add_argument("--round", type=int, default=20, help="Round of Exp.", required=True)
     parser.add_argument("--round_time", type=int, default=600, help="Timeout for every round (default: 600)",
                         required=True)
 
@@ -138,7 +116,6 @@ async def main():
     print(f"Distribution: {args.distribution}")
     print(f"Short QPS: {args.short_qps}")
     print(f"Long QPS: {args.long_qps}")
-    print(f"Range: {args.range_lower} - {args.range_higher}")
     print(f"Concurrency: {args.concurrency}")
     print(f"Number of Requests: {args.num_requests}")
     print(f"Short Clients: {args.short_clients}")
@@ -148,6 +125,7 @@ async def main():
     print(f"Remote Port: {args.remote_port}")
     print(f"Use Time Data: {args.use_time_data}")
     print(f"Request Timeout: {args.request_timeout} seconds")
+    print(f"Round: {args.round}")
     print(f"Round Time: {args.round_time} seconds")
     print("------------------------\n")
 
@@ -159,13 +137,8 @@ async def main():
     all_results = asyncio.Queue()
     update_event = asyncio.Event()
 
-    short_configurations, long_configurations = generate_configurations(args)
-    print(f"short_configurations: {short_configurations}")
-    print(f"long_configurations: {long_configurations}")
-
     start_time = time.time()
-    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, update_event,
-                                                               short_configurations, long_configurations)
+    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, update_event)
 
     try:
         benchmark_timeout = 3600 * 2

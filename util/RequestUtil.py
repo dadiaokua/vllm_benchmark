@@ -6,9 +6,6 @@ import logging
 
 import random
 
-from util.MathUtil import calculate_percentile
-from util.RequestDistributionUtil import get_target_time
-
 
 async def process_stream(stream):
     first_token_time = None
@@ -23,7 +20,7 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, output_tokens, request_timeout, request, tokenizer):
+async def make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo):
     start_time = time.time()
 
     try:
@@ -43,8 +40,7 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
         ttft = first_token_time - start_time if first_token_time else None
         input_token = tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = total_tokens / elapsed_time if elapsed_time > 0 else 0
-        logging.getLogger("openai").setLevel(logging.INFO)
-        return total_tokens, elapsed_time, tokens_per_second, ttft, len(input_token)
+        return total_tokens, elapsed_time, tokens_per_second, ttft, len(input_token), 1 if elapsed_time <= latency_slo else 0
 
     except asyncio.TimeoutError:
         logging.warning(f"Request timed out after {request_timeout} seconds")
@@ -55,7 +51,7 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
 
 
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout, round_time,
-                 rate_lambda, distribution, sample_content, config_round, worker_id, time_data, use_time_data):
+                 rate_lambda, distribution, sample_content, config_round, worker_id, time_data, use_time_data, latency_slo):
     # 使用全局时间基准点，而不是相对于上一个请求的时间
     global_start_time = time.time()
     request_count = 0
@@ -92,7 +88,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         # 创建并发送异步请求，但不等待它完成
         await asyncio.create_task(
             process_request(selected_client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                            results, task_id, client_index, semaphore, config_round)
+                            results, task_id, client_index, semaphore, config_round, latency_slo)
         )
 
         # 增加请求计数
@@ -102,12 +98,12 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
 
 
 async def process_request(client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                          results, task_id, client_index, semaphore, config_round):
+                          results, task_id, client_index, semaphore, config_round, latency_slo):
     async with semaphore:
         logging.info(
             f"Starting worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
         try:
-            result = await make_request(client, output_tokens, request_timeout, request, tokenizer)
+            result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
             if result:
                 results.append(result)
             else:
@@ -119,82 +115,21 @@ async def process_request(client, output_tokens, request_timeout, request, worke
         logging.info(
             f"Finished worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
 
+def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data):
+    if use_time_data:
+        target_time = time_data[request_count]
+    else:
+        # 计算这个请求应该在什么时间点发送（基于全局开始时间）
+        if distribution == "poisson":
+            # 泊松分布：请求之间的间隔遵循指数分布
+            intervals = [float(np.random.exponential(1 / rate_lambda)) for _ in range(request_count + 1)]
+            target_time = global_start_time + sum(intervals)
+        elif distribution == "normal":
+            # 正态分布：请求均匀分布，但有小的随机波动
+            target_time = global_start_time + (request_count / rate_lambda) + float(np.random.normal(0, 0.01))
+        else:
+            # 均匀分布：请求基本均匀，但有一定范围的随机性
+            jitter = np.random.uniform(-0.1, 0.1) / rate_lambda
+            target_time = global_start_time + (request_count / rate_lambda) + jitter
 
-async def run_benchmark(self, concurrency, request_timeout, output_tokens, openAI_clients, distribution, qps, client_index,
-                        formatted_json, config_round, tokenizer, time_data, use_time_data, round_time):
-    assert openAI_clients is not None, "OpenAI Client must not be None"
-    semaphore = asyncio.Semaphore(self.concurrency)
-    results = []
-    workers = []
-    start_time = time.time()
-    qps_per_worker = qps / concurrency
-    if qps < concurrency:
-        qps_per_worker = qps
-        concurrency = 1
-    for worker_id in range(concurrency):
-        worker_task = asyncio.create_task(
-            worker(openAI_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout, round_time,
-                   qps_per_worker, distribution, formatted_json, config_round, worker_id, time_data, use_time_data)
-        )
-        workers.append(worker_task)
-
-    # Wait for all workers to complete and collect their results
-    worker_results = await asyncio.gather(*workers)
-
-    # Sum up all worker request counts
-    num_requests = sum(worker_results)
-
-    end_time = time.time()
-
-    # Calculate metrics
-    total_elapsed_time = end_time - start_time
-    total_tokens = sum(tokens for tokens, _, _, _, _ in results if tokens is not None)
-    total_input_tokens = sum(input_token for _, _, _, _, input_token in results if input_token is not None)
-    latencies = [elapsed_time for _, elapsed_time, _, _, _ in results if elapsed_time is not None]
-    tokens_per_second_list = [tps for _, _, tps, _, _ in results if tps is not None]
-    ttft_list = [ttft for _, _, _, ttft, _ in results if ttft is not None]
-
-    successful_requests = len(results)
-    requests_per_second = successful_requests / total_elapsed_time if total_elapsed_time > 0 else 0
-    avg_latency = sum(latencies) / len(latencies) if latencies else 0
-    avg_tokens_per_second = sum(tokens_per_second_list) / len(tokens_per_second_list) if tokens_per_second_list else 0
-    avg_ttft = sum(ttft_list) / len(ttft_list) if ttft_list else 0
-
-    # Calculate percentiles
-    percentiles = [50, 95, 99]
-    latency_percentiles = [calculate_percentile(latencies, p) for p in percentiles]
-    tps_percentiles = [calculate_percentile(tokens_per_second_list, p, reverse=True) for p in percentiles]
-    ttft_percentiles = [calculate_percentile(ttft_list, p) for p in percentiles]
-
-    return {
-        "time": end_time,
-        "qps": qps,
-        "total_requests": num_requests,
-        "successful_requests": successful_requests,
-        "concurrency": concurrency,
-        "request_timeout": request_timeout,
-        "max_output_tokens": output_tokens,
-        "total_time": total_elapsed_time,
-        "requests_per_second": requests_per_second,
-        "total_output_tokens": total_tokens,
-        "total_input_tokens": total_input_tokens,
-        "latency": {
-            "average": avg_latency,
-            "p50": latency_percentiles[0],
-            "p95": latency_percentiles[1],
-            "p99": latency_percentiles[2]
-        },
-        "tokens_per_second": {
-            "average": avg_tokens_per_second,
-            "p50": tps_percentiles[0],
-            "p95": tps_percentiles[1],
-            "p99": tps_percentiles[2]
-        },
-        "time_to_first_token": {
-            "average": avg_ttft,
-            "p50": ttft_percentiles[0],
-            "p95": ttft_percentiles[1],
-            "p99": ttft_percentiles[2]
-        },
-        "client_index": client_index,
-    }
+    return target_time

@@ -1,14 +1,17 @@
 import asyncio
 import random
+import time
 
-from util.RequestUtil import run_benchmark
+from config.Config import GLOBAL_CONFIG
+from util.MathUtil import calculate_metrics
+from util.RequestUtil import worker
 
 
 class BenchmarkClient:
     """Class representing a benchmark client with its configurations and state"""
 
-    def __init__(self, client_type, client_index, configurations, port, api_key, tokenizer,
-                 distribution, request_timeout, concurrency, round_time, sleep, time_data,
+    def __init__(self, client_type, client_index, qps, port, api_key, tokenizer,
+                 distribution, request_timeout, concurrency, round, round_time, sleep, time_data,
                  result_queue, update_event, formatted_json, OpenAI_client, use_time_data=0):
         """Initialize a benchmark client
 
@@ -31,7 +34,7 @@ class BenchmarkClient:
         self.client_type = client_type
         self.client_index = client_index
         self.client_id = f"{client_type}_{client_index}"
-        self.configurations = configurations
+        self.qps = qps
         self.port = port
         self.api_key = api_key
         self.distribution = distribution
@@ -45,52 +48,37 @@ class BenchmarkClient:
         self.formatted_json = formatted_json
         self.tokenizer = tokenizer
         self.time_data = time_data
-        self.latency_slo = random.randint(0, 10)
+        self.round = round
+        self.latency_slo = random.randint(8, 15)
+
+        self.avg_latency_div_standard_latency = -1
+        self.slo_violation_count = -1
+        self.service = -1
 
         self.openAI_client = OpenAI_client
+        self.monitor_done_event = asyncio.Event()
 
         # State tracking
-        self.current_config_index = 0
         self.results = []
         self.task = None
 
-    def get_current_config(self):
-        """Get the current configuration"""
-        if self.current_config_index < len(self.configurations):
-            return self.configurations[self.current_config_index]
-        return None
-
-    def advance_config(self):
-        """Move to the next configuration"""
-        self.current_config_index += 1
-        return self.get_current_config()
-
-    def reduce_qps(self, reduction_factor=0.8):
-        """Reduce QPS for remaining configurations"""
-        for i in range(self.current_config_index, len(self.configurations)):
-            self.configurations[i]["qps"] = int(self.configurations[i]["qps"] * reduction_factor)
-        print(f"Reduced QPS for client {self.client_id} by factor {reduction_factor}")
-        print(f"New configurations: {self.configurations[self.current_config_index:]}")
-
     async def run_all_benchmarks(self):
         """Run all benchmark configurations for this client"""
-        print(f"Starting benchmarks for client {self.client_id} with {len(self.configurations)} configurations")
+        print(f"Starting benchmarks for client {self.client_id} with {self.round} configurations")
 
-        for i, config in enumerate(self.configurations):
-            self.current_config_index = i
-
+        for i in self.round:
             # Run benchmark with current configuration
-            print(f"Client {self.client_id}: Running configuration {i + 1}/{len(self.configurations)}: {config}")
-            result = await run_benchmark(
-                self, self.concurrency, self.request_timeout, config['output_tokens'], self.openAI_client,
-                self.distribution, config['qps'], self.client_id,
-                self.formatted_json, i, self.tokenizer, self.time_data, self.use_time_data, self.round_time
-            )
+            print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qps}")
+            result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qps, i, self.latency_slo)
 
             # Store and update results
             self.results.append(result)
             await self.result_queue.put(1)
             self.update_event.set()
+
+            # 等待 monitor 通知处理完成
+            await self.monitor_done_event.wait()
+            self.monitor_done_event.clear()
 
             # Give monitor time to process
             await asyncio.sleep(1)
@@ -99,6 +87,39 @@ class BenchmarkClient:
             await asyncio.sleep(self.sleep)
 
         return self.results
+
+    async def run_benchmark(self, output_tokens, qps, config_round, latency_slo):
+        assert self.openAI_client is not None, "OpenAI Client must not be None"
+        semaphore = asyncio.Semaphore(self.concurrency)
+        results = []
+        workers = []
+        start_time = time.time()
+        qps_per_worker = qps / self.concurrency
+        if qps < self.concurrency:
+            qps_per_worker = qps
+            self.concurrency = 1
+        for worker_id in range(self.concurrency):
+            worker_task = asyncio.create_task(
+                worker(self.openAI_client, semaphore, results, output_tokens, self.client_id, self.tokenizer,
+                       self.request_timeout, self.round_time, qps_per_worker, self.distribution, self.formatted_json,
+                       config_round, worker_id, self.time_data, self.use_time_data, latency_slo)
+            )
+            workers.append(worker_task)
+
+        # Wait for all workers to complete and collect their results
+        worker_results = await asyncio.gather(*workers)
+
+        # Sum up all worker request counts
+        num_requests = sum(worker_results)
+
+        end_time = time.time()
+
+        result = calculate_metrics(self.concurrency, self.request_timeout, self.client_id, results, start_time,
+                                   end_time, num_requests, qps, output_tokens, latency_slo)
+        self.avg_latency_div_standard_latency = result['avg_latency_div_standard_latency']
+        self.slo_violation_count = result['slo_violation_count']
+
+        return result
 
     def start(self):
         """Start the benchmark task"""
