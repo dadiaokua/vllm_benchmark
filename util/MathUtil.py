@@ -1,7 +1,7 @@
 import numpy as np
 
 from config.Config import GLOBAL_CONFIG
-from util.BaseUtil import ExchangeQPS
+from util.BaseUtil import ExchangeResources, selectClients
 
 
 def calculate_Jains_index(service_list):
@@ -23,45 +23,74 @@ def calculate_service_value(total_input_tokens, total_output_tokens):
 
 
 async def fairness_result(clients):
+    # Calculate service values and max service in one pass
+    max_service = 0
     service = []
+    
     for client in clients:
+        # Get latest results
+        latest_result = client.results[-1]
+        
+        # Calculate service value
         service_value = calculate_service_value(
-            client.results["total_input_tokens"],
-            client.results["total_output_tokens"]
+            latest_result["total_input_tokens"],
+            latest_result["total_output_tokens"]
         )
+        
+        # Update max service
+        max_service = max(max_service, service_value)
+        
+        # Store service info
         service.append({
             "service": service_value,
-            "client": client.results["client_index"]
+            "client": latest_result["client_index"]
         })
+        
+        # Update client attributes
         client.service = service_value
+        client.service_div_latency = service_value / client.avg_latency_div_standard_latency
 
+    # Calculate fairness ratios in one pass
+    alpha = GLOBAL_CONFIG['alpha']
+    for client in clients:
+        client.fairness_ratio = (1 - client.service / max_service) * (1 - alpha) + alpha * client.avg_latency_div_standard_latency
+
+    # Calculate Jain's fairness index
     tmp_jains_index = calculate_Jains_index(service)
+    
     return tmp_jains_index, service
 
 
+def fairness_score(client, max_service):
+    latency_ratio = client.avg_latency_div_standard_latency or 1e-6  # 避免除0
+    service_ratio = client.service / max_service if max_service != 0 else 0
+    return GLOBAL_CONFIG['alpha'] * latency_ratio + (1 - GLOBAL_CONFIG['alpha']) * (1 - service_ratio)
+
+
 async def is_fairness(clients):
-    if len(clients) <= 2:
-        print("No fairness for less 2 clients")
+    if len(clients) < 2:
+        print("[Fairness] Not enough clients for fairness calculation (minimum 3 required)")
         return
     iteration = 0
 
     while iteration < (len(clients) - 1):
-        clients.sort(key=lambda client: client.service / client.avg_latency_div_standard_latency
-        if client.avg_latency_div_standard_latency != 0 else float('inf'))
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
 
-        fairness_ratio = (clients[0].service / clients[0].avg_latency_div_standard_latency) / (
-                clients[-1].service / clients[-1].avg_latency_div_standard_latency)
+        clients.sort(key=lambda client: client.fairness_ratio)
 
-        if fairness_ratio <= GLOBAL_CONFIG["a"]:
-            print("All clients have fairness")
-            return
-
-        ExchangeQPS(clients[0], clients[-1])
+        client1, client2 = selectClients(clients)
+        if client1 is not None and client2 is not None:
+            fairness_ratio = abs(client1.fairness_ratio - client2.fairness_ratio)
+            if fairness_ratio <= GLOBAL_CONFIG["fairness_ratio"]:
+                print("[Fairness] Target fairness ratio achieved, stopping adjustments")
+                return
+            ExchangeResources(client1, client2, fairness_ratio)
+        else:
+            break
 
         iteration += 1
-        print(f"Iteration {iteration}: Adjusted QPS")
 
-    print("Reached maximum iterations without achieving fairness")
+    print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
 
 
 def calculate_percentile(values, percentile, reverse=False):

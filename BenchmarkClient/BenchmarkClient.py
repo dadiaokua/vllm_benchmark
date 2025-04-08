@@ -54,6 +54,11 @@ class BenchmarkClient:
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1
         self.service = -1
+        self.service_div_latency = -1
+        self.exchange_Resources_Times = 0
+        self.active_ratio = 1.0
+        self.fairness_ratio = -1
+        self.credit = 0
 
         self.openAI_client = OpenAI_client
         self.monitor_done_event = asyncio.Event()
@@ -66,7 +71,7 @@ class BenchmarkClient:
         """Run all benchmark configurations for this client"""
         print(f"Starting benchmarks for client {self.client_id} with {self.round} configurations")
 
-        for i in self.round:
+        for i in range(self.round):
             # Run benchmark with current configuration
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qps}")
             result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qps, i, self.latency_slo)
@@ -89,36 +94,47 @@ class BenchmarkClient:
         return self.results
 
     async def run_benchmark(self, output_tokens, qps, config_round, latency_slo):
+        print(f"[Client {self.client_id}] Starting benchmark run with QPS={qps}, output_tokens={output_tokens}")
         assert self.openAI_client is not None, "OpenAI Client must not be None"
+
         semaphore = asyncio.Semaphore(self.concurrency)
         results = []
         workers = []
         start_time = time.time()
-        qps_per_worker = qps / self.concurrency
+        print(f"[Client {self.client_id}] Benchmark started at {start_time}")
+
+        qps_per_worker = round(qps / self.concurrency)
         if qps < self.concurrency:
+            print(
+                f"[Client {self.client_id}] QPS ({qps}) < concurrency ({self.concurrency}), adjusting concurrency to 1")
             qps_per_worker = qps
             self.concurrency = 1
+
+        print(f"[Client {self.client_id}] Creating {self.concurrency} workers with {qps_per_worker} QPS per worker")
         for worker_id in range(self.concurrency):
             worker_task = asyncio.create_task(
                 worker(self.openAI_client, semaphore, results, output_tokens, self.client_id, self.tokenizer,
                        self.request_timeout, self.round_time, qps_per_worker, self.distribution, self.formatted_json,
-                       config_round, worker_id, self.time_data, self.use_time_data, latency_slo)
+                       config_round, worker_id, self.time_data, self.use_time_data, latency_slo, self.active_ratio, )
             )
             workers.append(worker_task)
 
-        # Wait for all workers to complete and collect their results
+        print(f"[Client {self.client_id}] Waiting for all workers to complete")
         worker_results = await asyncio.gather(*workers)
 
-        # Sum up all worker request counts
         num_requests = sum(worker_results)
+        print(f"[Client {self.client_id}] Total requests completed: {num_requests}")
 
         end_time = time.time()
+        print(f"[Client {self.client_id}] Benchmark ended at {end_time}, total time: {end_time - start_time:.2f}s")
 
         result = calculate_metrics(self.concurrency, self.request_timeout, self.client_id, results, start_time,
                                    end_time, num_requests, qps, output_tokens, latency_slo)
         self.avg_latency_div_standard_latency = result['avg_latency_div_standard_latency']
         self.slo_violation_count = result['slo_violation_count']
 
+        print(
+            f"[Client {self.client_id}] Benchmark complete. Avg latency ratio: {self.avg_latency_div_standard_latency:.2f}, SLO violations: {self.slo_violation_count}")
         return result
 
     def start(self):

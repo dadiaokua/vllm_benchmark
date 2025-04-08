@@ -11,8 +11,7 @@ RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 async def monitor_results(clients, result_queue, update_event, max_loops, client_count):
     loop_count = 0  # 计数器
     tmp_results = []
-    print(f'Starting monitor_results with max_loops={max_loops}, client_count={client_count}')
-    print(f'Total expected loop_count = {max_loops * client_count}')
+    print(f'Starting monitor_results, total expected loop_count = {max_loops * client_count}, client_count={client_count}')
 
     while loop_count < (max_loops * client_count):  # 限制循环次数
         print(f'Current loop count: {loop_count}')
@@ -37,18 +36,27 @@ async def monitor_results(clients, result_queue, update_event, max_loops, client
 
             if len(tmp_results) == client_count:
                 print(f'Reached client_count={client_count}, calculating fairness...')
+                print("Starting fairness calculation...")
                 f_result, s_result = await fairness_result(clients)
+                print(f"Fairness calculation complete. Fairness index: {f_result}")
+                
                 if GLOBAL_CONFIG["whether_fairness"]:
+                    print("Starting fairness adjustment...")
                     await is_fairness(clients)
-                # **追加到文件**
+                    print("Fairness adjustment complete")
+                else:
+                    print("Skipping fairness adjustment (disabled in config)")
+
                 save_results(f_result, s_result, RESULTS_FILE)
                 print(f'Results saved to {RESULTS_FILE}')
                 tmp_results = []
-                print('Cleared tmp_results')
 
-                # 通知 run_all_benchmarks 处理已完成
-                for client in clients:
+                print("Notifying clients of completion...")
+                for i, client in enumerate(clients):
+                    print(f"Resetting client {i+1}/{len(clients)}")
+                    client.exchange_Resources_Times = 0
                     client.monitor_done_event.set()
+                print("All clients notified")
 
             result_queue.task_done()  # 标记任务完成
             print('Task marked as done')
