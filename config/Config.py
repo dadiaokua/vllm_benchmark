@@ -1,9 +1,16 @@
+from datetime import datetime
+
 GLOBAL_CONFIG = {
     "output_tokens": 200,
     "alpha": 0.5,
-    "fairness_ratio": 0.15,
+    "fairness_ratio_LFS": 0.15,
+    "fairness_ratio_VTC": 0.5,
     'ADJUST_SENSITIVITY': 0.5,
     "b": 1.5,
     "whether_fairness": 1,
-    "max_granularity": 10
+    "max_granularity": 10,
+    "round_time": 60,
+    "monitor_file_time": datetime.now().strftime("%m_%d_%H_%M"),
+    "exp_time": 3600 * 2,
+    "avg_success_rate": 0.9
 }

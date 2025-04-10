@@ -6,6 +6,7 @@ from datetime import datetime
 from transformers import AutoTokenizer
 from BenchmarkClient.BenchmarkClient import BenchmarkClient
 from BenchmarkMonitor.BenchmarkMonitor import monitor_results, RESULTS_FILE
+from config.Config import GLOBAL_CONFIG
 from plot.plotMain import plot_result
 from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
@@ -41,7 +42,6 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             round_time=args.round_time,
             sleep=args.sleep,
             result_queue=all_results,
-            update_event=update_event,
             use_time_data=args.use_time_data,
             formatted_json=short_formatted_json,
             OpenAI_client=openAI_client,
@@ -66,7 +66,6 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             round_time=args.round_time,
             sleep=args.sleep,
             result_queue=all_results,
-            update_event=update_event,
             use_time_data=args.use_time_data,
             formatted_json=long_formatted_json,
             OpenAI_client=openAI_client,
@@ -78,8 +77,7 @@ async def setup_benchmark_tasks(args, all_results, update_event):
         tasks.append(client.start())
 
     # Create monitor task
-    monitor_task = asyncio.create_task(monitor_results(clients, all_results, update_event, args.round,
-                                                       args.short_clients + args.long_clients))
+    monitor_task = asyncio.create_task(monitor_results(clients, all_results, args.short_clients + args.long_clients, args.exp))
     tasks.insert(0, monitor_task)
 
     return tasks, monitor_task, clients
@@ -107,6 +105,7 @@ async def main():
     parser.add_argument("--round", type=int, default=20, help="Round of Exp.", required=True)
     parser.add_argument("--round_time", type=int, default=600, help="Timeout for every round (default: 600)",
                         required=True)
+    parser.add_argument("--exp", type=str, help="Experiment type", required=True, default="LFS")
 
     args = parser.parse_args()
 
@@ -127,8 +126,9 @@ async def main():
     print(f"Request Timeout: {args.request_timeout} seconds")
     print(f"Round: {args.round}")
     print(f"Round Time: {args.round_time} seconds")
+    print(f"Experiment Type: {args.exp}")
     print("------------------------\n")
-
+    GLOBAL_CONFIG['round_time'] = args.round_time
     servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
 
     with open(RESULTS_FILE, "w") as f:
@@ -141,7 +141,7 @@ async def main():
     tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, update_event)
 
     try:
-        benchmark_timeout = 3600 * 2
+        benchmark_timeout = GLOBAL_CONFIG['exp_time']
         await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
 
     except asyncio.TimeoutError:
@@ -163,6 +163,8 @@ async def main():
             result = task.result()
             if result:
                 all_benchmark_results.append(result)
+
+    tasks[0].done()  # 取消monitor_task
 
     benchmark_results = all_benchmark_results
 

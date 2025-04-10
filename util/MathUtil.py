@@ -1,17 +1,17 @@
 import numpy as np
 
 from config.Config import GLOBAL_CONFIG
-from util.BaseUtil import ExchangeResources, selectClients
+from util.BaseUtil import selectClients_LFS, selectClients_VTC, exchange_resources
 
 
-def calculate_Jains_index(service_list):
-    service = [entry["service"] for entry in service_list]
-    n = len(service)
+def calculate_Jains_index(clients):
+    fairness_ratio = [clienr.fairness_ratio for clienr in clients]
+    n = len(fairness_ratio)
     if n == 0:
         return 0  # Avoid division by zero
 
-    sum_service = sum(service)
-    sum_squares = sum(s ** 2 for s in service)
+    sum_service = sum(fairness_ratio)
+    sum_squares = sum(s ** 2 for s in fairness_ratio)
 
     j = (sum_service ** 2) / (n * sum_squares)
     return j
@@ -26,26 +26,26 @@ async def fairness_result(clients):
     # Calculate service values and max service in one pass
     max_service = 0
     service = []
-    
+
     for client in clients:
         # Get latest results
         latest_result = client.results[-1]
-        
+
         # Calculate service value
         service_value = calculate_service_value(
             latest_result["total_input_tokens"],
             latest_result["total_output_tokens"]
         )
-        
+
         # Update max service
         max_service = max(max_service, service_value)
-        
+
         # Store service info
         service.append({
             "service": service_value,
             "client": latest_result["client_index"]
         })
-        
+
         # Update client attributes
         client.service = service_value
         client.service_div_latency = service_value / client.avg_latency_div_standard_latency
@@ -53,11 +53,12 @@ async def fairness_result(clients):
     # Calculate fairness ratios in one pass
     alpha = GLOBAL_CONFIG['alpha']
     for client in clients:
-        client.fairness_ratio = (1 - client.service / max_service) * (1 - alpha) + alpha * client.avg_latency_div_standard_latency
+        client.fairness_ratio = (1 - client.service / max_service) * (
+                    1 - alpha) + alpha * (client.slo_violation_count / client.results[-1]['successful_requests'])
 
     # Calculate Jain's fairness index
-    tmp_jains_index = calculate_Jains_index(service)
-    
+    tmp_jains_index = calculate_Jains_index(clients)
+
     return tmp_jains_index, service
 
 
@@ -67,30 +68,48 @@ def fairness_score(client, max_service):
     return GLOBAL_CONFIG['alpha'] * latency_ratio + (1 - GLOBAL_CONFIG['alpha']) * (1 - service_ratio)
 
 
-async def is_fairness(clients):
+async def is_fairness_LFSLLM(clients, exp_type):
     if len(clients) < 2:
-        print("[Fairness] Not enough clients for fairness calculation (minimum 3 required)")
+        print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
         return
     iteration = 0
 
     while iteration < (len(clients) - 1):
         print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
-
         clients.sort(key=lambda client: client.fairness_ratio)
-
-        client1, client2 = selectClients(clients)
+        client1, client2 = selectClients_LFS(clients)
         if client1 is not None and client2 is not None:
-            fairness_ratio = abs(client1.fairness_ratio - client2.fairness_ratio)
-            if fairness_ratio <= GLOBAL_CONFIG["fairness_ratio"]:
-                print("[Fairness] Target fairness ratio achieved, stopping adjustments")
-                return
-            ExchangeResources(client1, client2, fairness_ratio)
+            exchange_resources(client1, client2, clients, exp_type)
         else:
             break
-
         iteration += 1
 
     print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
+
+
+async def is_fairness_VTC(clients, exp_type):
+    if len(clients) < 2:
+        print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
+        return
+    iteration = 0
+
+    while iteration < (len(clients) - 1):
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
+        clients.sort(key=lambda client: client.service)
+        client1, client2 = selectClients_VTC(clients)
+        if client1 is not None and client2 is not None:
+            exchange_resources(client1, client2, clients, exp_type)
+        else:
+            break
+        iteration += 1
+
+    print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
+
+
+async def is_fairness_DLPM(clients, exp_type):
+    if len(clients) < 2:
+        print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
+        return
 
 
 def calculate_percentile(values, percentile, reverse=False):

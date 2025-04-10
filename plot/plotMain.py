@@ -133,6 +133,8 @@ def plot_individual_clients(sorted_all_results, args_concurrency, total_time, fi
     # 保存图片
     fig1.savefig('figure/individual_clients' + filename + '.png', dpi=300, bbox_inches='tight')
 
+    plt.show()
+
 
 def plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename):
     # 调整第二个图的大小
@@ -248,7 +250,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
 
     # 保存图片
     fig2.savefig('figure/averaged_results' + filename + '.png', dpi=300, bbox_inches='tight')
-
+    plt.show()
     return time_xLabel
 
 
@@ -304,6 +306,7 @@ def plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_
     ax2.set_ylabel("Fairness Index", fontsize=10)
     ax2.tick_params(axis='both', labelsize=9)
     ax2.grid(True, linestyle='--', alpha=0.7)
+    ax2.set_ylim(0, 1)
 
     # Plot service per client over time
     # 先画short clients，使用实线
@@ -341,7 +344,7 @@ def plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_
     # 创建 figure 文件夹（如果不存在）
     if not os.path.exists('figure'):
         os.makedirs('figure')
-
+    plt.show()
     fig3.savefig('figure/fairness_results' + filename + '.png', dpi=300, bbox_inches='tight')
 
 
@@ -374,8 +377,6 @@ def plot_result(filename, args_concurrency, total_time):
         plot_individual_clients(sorted_all_results, args_concurrency, total_time, filename)
         qps_with_time = plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename)
         plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_results)
-
-        plt.show()
     else:
         print("No results found")
         return
