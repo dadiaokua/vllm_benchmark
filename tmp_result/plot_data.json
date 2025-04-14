@@ -1,6 +1,7 @@
 {
-    "filename": "0410_15-20_to_16-23.json",
+    "exp_type": "VTC",
+    "filename": "0414_17-17_to_17-36.json",
     "concurrency": 5,
     "num_requests": 100,
-    "total_time": 3768.0
+    "total_time": 1110.36
 }

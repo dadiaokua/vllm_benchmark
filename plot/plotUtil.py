@@ -31,3 +31,23 @@ def setup_subplot(ax, title, qps_with_time, y_format=None, ylim=None):
         ax.set_ylim(ylim)
     ax.legend()
     ax.grid(True, linestyle='--', alpha=0.7)
+
+
+def setup_subplot_client(ax, title, x_labels, ylim=None):
+    """设置子图的通用属性"""
+    ax.set_title(title, fontsize=12, pad=10)
+    ax.set_xlabel("Time", fontsize=10)
+    ax.set_ylabel(title, fontsize=10)
+    ax.set_xticks(range(len(x_labels)))
+    ax.set_xticklabels(x_labels, rotation=45)
+    ax.tick_params(axis='both', labelsize=9)
+    ax.grid(True, linestyle='--', alpha=0.7)
+
+    # 检查ylim是否为有效的数值元组
+    if ylim is not None and isinstance(ylim, tuple) and len(ylim) == 2:
+        try:
+            bottom, top = float(ylim[0]), float(ylim[1])
+            if bottom < top:  # 确保下限小于上限
+                ax.set_ylim(bottom, top)
+        except (TypeError, ValueError):
+            print(f"Warning: Invalid ylim value: {ylim}. Skipping ylim setting.")

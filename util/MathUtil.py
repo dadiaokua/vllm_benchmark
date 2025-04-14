@@ -22,7 +22,7 @@ def calculate_service_value(total_input_tokens, total_output_tokens):
     return total_input_tokens + 2 * total_output_tokens
 
 
-async def fairness_result(clients):
+async def fairness_result(clients, exp_type):
     # Calculate service values and max service in one pass
     max_service = 0
     service = []
@@ -53,8 +53,13 @@ async def fairness_result(clients):
     # Calculate fairness ratios in one pass
     alpha = GLOBAL_CONFIG['alpha']
     for client in clients:
-        client.fairness_ratio = (1 - client.service / max_service) * (
+        if exp_type.lower() == "lfs":
+            client.fairness_ratio = (1 - client.service / max_service) * (
                     1 - alpha) + alpha * (client.slo_violation_count / client.results[-1]['successful_requests'])
+        elif exp_type.lower() == "vtc":
+            client.fairness_ratio = client.service / max_service
+        else:
+            client.fairness_ratio = 1
 
     # Calculate Jain's fairness index
     tmp_jains_index = calculate_Jains_index(clients)
@@ -95,7 +100,7 @@ async def is_fairness_VTC(clients, exp_type):
 
     while iteration < (len(clients) - 1):
         print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
-        clients.sort(key=lambda client: client.service)
+        clients.sort(key=lambda client: client.fairness_ratio)
         client1, client2 = selectClients_VTC(clients)
         if client1 is not None and client2 is not None:
             exchange_resources(client1, client2, clients, exp_type)

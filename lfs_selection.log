@@ -1,0 +1,756 @@
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.5171721999741636,
+      "fairness_ratio_j": 0.6542181704098768,
+      "difference": 0.1370459704357132,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.5171721999741636,
+      "fairness_ratio_j": 0.6532402605791057,
+      "difference": 0.13606806060494203,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.5171721999741636,
+      "fairness_ratio_j": 0.5988024802997028,
+      "difference": 0.0816302803255392,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.5122288002535182,
+      "fairness_ratio_j": 0.6572087060484277,
+      "difference": 0.1449799057949095,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.5122288002535182,
+      "fairness_ratio_j": 0.6222547615011207,
+      "difference": 0.11002596124760244,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.5122288002535182,
+      "fairness_ratio_j": 0.5933667516529104,
+      "difference": 0.08113795139939217,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.6617627013808152,
+      "fairness_ratio_j": 0.7908044923743035,
+      "difference": 0.12904179099348834,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 3,
+      "j": 5,
+      "fairness_ratio_i": 0.707423446449946,
+      "fairness_ratio_j": 0.7908044923743035,
+      "difference": 0.08338104592435747,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 3,
+      "i": 4,
+      "j": 5,
+      "fairness_ratio_i": 0.7239843381613185,
+      "fairness_ratio_j": 0.7908044923743035,
+      "difference": 0.06682015421298504,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.028819484908518815,
+      "fairness_ratio_j": 0.14145204521617524,
+      "difference": 0.11263256030765642,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 1,
+      "j": 5,
+      "fairness_ratio_i": 0.028819484908518815,
+      "fairness_ratio_j": 0.14040904323505415,
+      "difference": 0.11158955832653533,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 1,
+      "j": 4,
+      "fairness_ratio_i": 0.028819484908518815,
+      "fairness_ratio_j": 0.13910383405197524,
+      "difference": 0.11028434914345642,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 1,
+      "j": 3,
+      "fairness_ratio_i": 0.028819484908518815,
+      "fairness_ratio_j": 0.1384512294604358,
+      "difference": 0.10963174455191699,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.028819484908518815,
+      "fairness_ratio_j": 0.13370236569164431,
+      "difference": 0.10488288078312549,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 0,
+      "j": 7,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.1481373928036662,
+      "difference": 0.1481373928036662,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 0,
+      "j": 6,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.1472843595444439,
+      "difference": 0.1472843595444439,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 0,
+      "j": 5,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.14720722355823762,
+      "difference": 0.14720722355823762,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 0,
+      "j": 4,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.14662643495621397,
+      "difference": 0.14662643495621397,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 0,
+      "j": 3,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.1427242615363673,
+      "difference": 0.1427242615363673,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 6,
+      "i": 0,
+      "j": 2,
+      "fairness_ratio_i": 0.0,
+      "fairness_ratio_j": 0.13995870956032486,
+      "difference": 0.13995870956032486,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 7,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.042449748173692084,
+      "fairness_ratio_j": 0.13995870956032486,
+      "difference": 0.09750896138663277,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.029905087910378086,
+      "fairness_ratio_j": 0.16226569244611333,
+      "difference": 0.13236060453573525,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 1,
+      "j": 5,
+      "fairness_ratio_i": 0.029905087910378086,
+      "fairness_ratio_j": 0.1464734114492944,
+      "difference": 0.11656832353891632,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 1,
+      "j": 4,
+      "fairness_ratio_i": 0.029905087910378086,
+      "fairness_ratio_j": 0.14632021160728176,
+      "difference": 0.11641512369690367,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 1,
+      "j": 3,
+      "fairness_ratio_i": 0.029905087910378086,
+      "fairness_ratio_j": 0.14623403669614962,
+      "difference": 0.11632894878577153,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.029905087910378086,
+      "fairness_ratio_j": 0.14583188711086637,
+      "difference": 0.11592679920048828,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.044714938657685825,
+      "fairness_ratio_j": 0.1531753668510945,
+      "difference": 0.10846042819340868,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 1,
+      "j": 5,
+      "fairness_ratio_i": 0.044714938657685825,
+      "fairness_ratio_j": 0.15136636997834974,
+      "difference": 0.1066514313206639,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 1,
+      "j": 4,
+      "fairness_ratio_i": 0.044714938657685825,
+      "fairness_ratio_j": 0.14896078903055085,
+      "difference": 0.10424585037286502,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 1,
+      "j": 3,
+      "fairness_ratio_i": 0.044714938657685825,
+      "fairness_ratio_j": 0.14817175847967282,
+      "difference": 0.10345681982198698,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.044714938657685825,
+      "fairness_ratio_j": 0.14510464277122923,
+      "difference": 0.1003897041135434,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.042146424079401244,
+      "fairness_ratio_j": 0.1505211641199985,
+      "difference": 0.10837474004059724,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 1,
+      "j": 5,
+      "fairness_ratio_i": 0.042146424079401244,
+      "fairness_ratio_j": 0.1484913014781883,
+      "difference": 0.10634487739878704,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 1,
+      "j": 4,
+      "fairness_ratio_i": 0.042146424079401244,
+      "fairness_ratio_j": 0.1481849541101605,
+      "difference": 0.10603853003075925,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 1,
+      "j": 3,
+      "fairness_ratio_i": 0.042146424079401244,
+      "fairness_ratio_j": 0.14682507067159808,
+      "difference": 0.10467864659219683,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.042146424079401244,
+      "fairness_ratio_j": 0.14550752792617772,
+      "difference": 0.10336110384677646,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_11_16_18",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.06725062351651263,
+      "fairness_ratio_j": 0.1532561417882574,
+      "difference": 0.08600551827174475,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 1,
+      "j": 5,
+      "fairness_ratio_i": 0.06725062351651263,
+      "fairness_ratio_j": 0.15185609118401866,
+      "difference": 0.08460546766750603,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 1,
+      "j": 4,
+      "fairness_ratio_i": 0.06725062351651263,
+      "fairness_ratio_j": 0.1497789076713616,
+      "difference": 0.08252828415484896,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 4,
+      "i": 1,
+      "j": 3,
+      "fairness_ratio_i": 0.06725062351651263,
+      "fairness_ratio_j": 0.14821499572273691,
+      "difference": 0.08096437220622428,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 5,
+      "i": 1,
+      "j": 2,
+      "fairness_ratio_i": 0.06725062351651263,
+      "fairness_ratio_j": 0.14472571297757747,
+      "difference": 0.07747508946106484,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.8134359373083696,
+      "fairness_ratio_j": 0.8831714671165135,
+      "difference": 0.0697355298081439,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.8134359373083696,
+      "fairness_ratio_j": 0.8829532543324378,
+      "difference": 0.06951731702406816,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.8134359373083696,
+      "fairness_ratio_j": 0.8789286768370275,
+      "difference": 0.06549273952865786,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.8418468186292685,
+      "fairness_ratio_j": 0.8433223224532465,
+      "difference": 0.001475503823977986,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 3,
+      "j": 5,
+      "fairness_ratio_i": 0.8418835980501007,
+      "fairness_ratio_j": 0.8433223224532465,
+      "difference": 0.0014387244031457413,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 3,
+      "j": 4,
+      "fairness_ratio_i": 0.8418835980501007,
+      "fairness_ratio_j": 0.8429772449460258,
+      "difference": 0.00109364689592506,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.7787290693159532,
+      "fairness_ratio_j": 0.8397343139429722,
+      "difference": 0.06100524462701895,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.7787290693159532,
+      "fairness_ratio_j": 0.8297582035049401,
+      "difference": 0.05102913418898691,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.7787290693159532,
+      "fairness_ratio_j": 0.8219343899225565,
+      "difference": 0.043205320606603315,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.7546751715619578,
+      "fairness_ratio_j": 0.8402580706070518,
+      "difference": 0.08558289904509397,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 3,
+      "j": 5,
+      "fairness_ratio_i": 0.7682879767592681,
+      "fairness_ratio_j": 0.8402580706070518,
+      "difference": 0.07197009384778374,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 3,
+      "i": 4,
+      "j": 5,
+      "fairness_ratio_i": 0.8030590574292771,
+      "fairness_ratio_j": 0.8402580706070518,
+      "difference": 0.03719901317777474,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 1,
+      "j": 6,
+      "fairness_ratio_i": 0.10686717573113082,
+      "fairness_ratio_j": 0.18467505125784142,
+      "difference": 0.0778078755267106,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 6,
+      "fairness_ratio_i": 0.13598514362890238,
+      "fairness_ratio_j": 0.18467505125784142,
+      "difference": 0.048689907628939044,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 3,
+      "i": 3,
+      "j": 6,
+      "fairness_ratio_i": 0.1381097085865669,
+      "fairness_ratio_j": 0.18467505125784142,
+      "difference": 0.04656534267127452,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 4,
+      "i": 4,
+      "j": 6,
+      "fairness_ratio_i": 0.13955119214586253,
+      "fairness_ratio_j": 0.18467505125784142,
+      "difference": 0.04512385911197889,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 5,
+      "i": 5,
+      "j": 6,
+      "fairness_ratio_i": 0.14162900628538774,
+      "fairness_ratio_j": 0.18467505125784142,
+      "difference": 0.04304604497245368,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.15868629178338461,
+      "fairness_ratio_j": 0.15983449968820213,
+      "difference": 0.001148207904817511,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.15868629178338461,
+      "fairness_ratio_j": 0.1595771427440189,
+      "difference": 0.0008908509606342929,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.15868629178338461,
+      "fairness_ratio_j": 0.15948607797915404,
+      "difference": 0.0007997861957694252,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.13370462568386704,
+      "fairness_ratio_j": 0.1418927471414708,
+      "difference": 0.008188121457603753,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 2,
+      "i": 2,
+      "j": 4,
+      "fairness_ratio_i": 0.13370462568386704,
+      "fairness_ratio_j": 0.13873676216193406,
+      "difference": 0.005032136478067023,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 2,
+      "j": 3,
+      "fairness_ratio_i": 0.13370462568386704,
+      "fairness_ratio_j": 0.13858768265755309,
+      "difference": 0.004883056973686045,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.13957875126141742,
+      "fairness_ratio_j": 0.14714725593189637,
+      "difference": 0.007568504670478954,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 3,
+      "j": 5,
+      "fairness_ratio_i": 0.14059306026340979,
+      "fairness_ratio_j": 0.14714725593189637,
+      "difference": 0.006554195668486584,
+      "action": "Moving j backward"
+    },
+    {
+      "step": 3,
+      "i": 3,
+      "j": 4,
+      "fairness_ratio_i": 0.14059306026340979,
+      "fairness_ratio_j": 0.1450099619634124,
+      "difference": 0.004416901700002612,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}
+{
+  "timestamp": "04_14_16_32",
+  "total_clients": 8,
+  "search_process": [
+    {
+      "step": 1,
+      "i": 2,
+      "j": 5,
+      "fairness_ratio_i": 0.14575532695690666,
+      "fairness_ratio_j": 0.23270570965900483,
+      "difference": 0.08695038270209818,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 2,
+      "i": 3,
+      "j": 5,
+      "fairness_ratio_i": 0.1473513752810559,
+      "fairness_ratio_j": 0.23270570965900483,
+      "difference": 0.08535433437794893,
+      "action": "Moving i forward"
+    },
+    {
+      "step": 3,
+      "i": 4,
+      "j": 5,
+      "fairness_ratio_i": 0.14812260447126527,
+      "fairness_ratio_j": 0.23270570965900483,
+      "difference": 0.08458310518773957,
+      "action": "Moving j backward"
+    }
+  ],
+  "result": "No suitable pairs found"
+}

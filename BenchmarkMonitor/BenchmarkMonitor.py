@@ -9,63 +9,151 @@ from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, 
 RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 
 
-async def monitor_results(clients, result_queue, client_count, exp_type):
-    tmp_results = []
-    print(
-        f'Starting monitor_results, client_count={client_count}')
-    now_time = datetime.now()
-    exp_duration = timedelta(seconds=GLOBAL_CONFIG['exp_time'])
+class ExperimentMonitor:
+    """
+    实验监控器类，负责监控实验结果、计算公平性并触发资源调整
+    """
 
-    while datetime.now() - now_time < exp_duration:  # 限制循环次数
+    def __init__(self, clients, result_queue, client_count, exp_type, config=None):
+        """
+        初始化监控器
 
-        # 每秒检查一次队列，而不是等待事件
-        if not result_queue.empty():  # 如果队列里有结果
-            print(f'Queue not empty, getting next result...')
+        Args:
+            clients: 客户端列表
+            result_queue: 结果队列
+            client_count: 客户端数量
+            exp_type: 实验类型 (LFS, VTC, DLPM等)
+            config: 配置参数，默认使用GLOBAL_CONFIG
+        """
+        self.clients = clients
+        self.result_queue = result_queue
+        self.client_count = client_count
+        self.exp_type = exp_type
+        self.config = config or GLOBAL_CONFIG
+        self.tmp_results = []
+        self.fairness_results = []
+        self.start_time = None
+        self.logger = self._setup_logger()
+
+        # 设置公平性调整策略映射
+        self.fairness_strategies = {
+            "LFS": is_fairness_LFSLLM,
+            "VTC": is_fairness_VTC,
+            "DLPM": is_fairness_DLPM
+        }
+
+    def _setup_logger(self):
+        """设置日志记录器"""
+        import logging
+        logger = logging.getLogger(f"ExperimentMonitor-{self.exp_type}")
+        logger.setLevel(logging.INFO)
+
+        # 创建控制台处理器
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+
+        # 创建格式化器
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        ch.setFormatter(formatter)
+
+        # 添加处理器到日志记录器
+        logger.addHandler(ch)
+
+        return logger
+
+    async def __call__(self):
+        """
+        使类实例可以作为协程调用
+        这样可以直接将实例传递给 asyncio.create_task()
+        """
+        return await self.start_monitoring()
+
+    async def start_monitoring(self):
+        """开始监控实验结果"""
+        self.start_time = datetime.now()
+        self.logger.info(f'Starting monitor for {self.exp_type} experiment with {self.client_count} clients')
+        exp_duration = timedelta(seconds=self.config['exp_time'])
+
+        while datetime.now() - self.start_time < exp_duration:
+            await self._check_results()
+            await asyncio.sleep(5)  # 每5秒检查一次
+
+        self.logger.info(f'Experiment duration reached. Monitoring stopped.')
+        return self.fairness_results
+
+    async def _check_results(self):
+        """检查结果队列并处理结果"""
+        if not self.result_queue.empty():
+            self.logger.info('Queue not empty, getting next result...')
             try:
-                result = await asyncio.wait_for(result_queue.get(), timeout=10)  # 10秒超时
+                result = await asyncio.wait_for(self.result_queue.get(), timeout=10)
+                self.tmp_results.append(result)
+                self.logger.info(f'Current completed client numbers: {len(self.tmp_results)}')
+
+                if len(self.tmp_results) == self.client_count:
+                    await self._process_complete_round()
+
+                self.result_queue.task_done()
+                self.logger.info('Task marked as done')
             except asyncio.TimeoutError:
-                print("Timeout while waiting for result.")
-                await asyncio.sleep(1)  # 如果超时，等待1秒后继续
-                continue
-                
-            tmp_results.append(result)
-            print(f'Current completed client numbers: {len(tmp_results)}')
-
-            if len(tmp_results) == client_count:
-                print(f'Reached client_count={client_count}, calculating fairness...')
-                print("Starting fairness calculation...")
-                f_result, s_result = await fairness_result(clients)
-                print(f"Fairness calculation complete. Fairness index: {f_result}")
-
-                if GLOBAL_CONFIG["whether_fairness"]:
-                    print("Starting fairness adjustment...")
-                    if exp_type == "LFS":
-                        await is_fairness_LFSLLM(clients, exp_type)
-                    elif exp_type == "VTC":
-                        await is_fairness_VTC(clients, exp_type)
-                    elif exp_type == "DLPM":
-                        await is_fairness_DLPM(clients, exp_type)
-                    else:
-                        print(f"Invalid experiment type: {exp_type}, skipping fairness")
-                    print("Fairness adjustment complete")
-                else:
-                    print("Skipping fairness adjustment (disabled in config)")
-
-                save_results(f_result, s_result, RESULTS_FILE)
-                print(f'Results saved to {RESULTS_FILE}')
-                tmp_results = []
-
-                print("Notifying clients of completion...")
-                for i, client in enumerate(clients):
-                    print(f"Resetting client {i + 1}/{len(clients)}")
-                    client.exchange_Resources_Times = 0
-                    client.monitor_done_event.set()
-                print("All clients notified")
-
-            result_queue.task_done()  # 标记任务完成
-            print('Task marked as done')
+                self.logger.warning("Timeout while waiting for result.")
         else:
-            print('Queue is empty, waiting for 5 second..., len of tmp_results: ', len(tmp_results))
-            # 如果队列为空，等待1秒后再次检查
-            await asyncio.sleep(5)
+            self.logger.info(f'Queue is empty, waiting... (current results: {len(self.tmp_results)})')
 
+    async def _process_complete_round(self):
+        """处理完整一轮的结果"""
+        self.logger.info(f'Reached client_count={self.client_count}, calculating fairness...')
+
+        # 计算公平性
+        f_result, s_result = await self._calculate_fairness()
+        self.logger.info(f"Fairness calculation complete. Fairness index: {f_result}")
+
+        # 根据配置决定是否进行公平性调整
+        if self.config["whether_fairness"]:
+            await self._adjust_fairness()
+        else:
+            self.logger.info("Skipping fairness adjustment (disabled in config)")
+
+        # 保存结果
+        self._save_results(f_result, s_result)
+
+        # 重置客户端
+        await self._reset_clients()
+
+        # 清空临时结果
+        self.tmp_results = []
+
+    async def _calculate_fairness(self):
+        """计算公平性指标"""
+        self.logger.info("Starting fairness calculation...")
+        return await fairness_result(self.clients, self.exp_type)
+
+    async def _adjust_fairness(self):
+        """根据实验类型调整公平性"""
+        self.logger.info(f"Starting fairness adjustment for {self.exp_type}...")
+        
+        # 从映射中获取调整函数
+        adjust_function = self.fairness_strategies.get(self.exp_type)
+        
+        if adjust_function:
+            await adjust_function(self.clients, self.exp_type)
+        else:
+            self.logger.warning(f"Invalid experiment type: {self.exp_type}, skipping fairness")
+        
+        self.logger.info("Fairness adjustment complete")
+
+    def _save_results(self, f_result, s_result):
+        """保存结果到文件"""
+        results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
+        save_results(f_result, s_result, results_file)
+        self.fairness_results.append((f_result, s_result))
+        self.logger.info(f'Results saved to {results_file}')
+
+    async def _reset_clients(self):
+        """重置所有客户端"""
+        self.logger.info("Notifying clients of completion...")
+        for i, client in enumerate(self.clients):
+            self.logger.info(f"Resetting client {i + 1}/{len(self.clients)}")
+            client.exchange_Resources_Times = 0
+            client.monitor_done_event.set()
+        self.logger.info("All clients notified")

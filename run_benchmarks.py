@@ -5,7 +5,7 @@ import argparse
 from datetime import datetime
 from transformers import AutoTokenizer
 from BenchmarkClient.BenchmarkClient import BenchmarkClient
-from BenchmarkMonitor.BenchmarkMonitor import monitor_results, RESULTS_FILE
+from BenchmarkMonitor.BenchmarkMonitor import RESULTS_FILE, ExperimentMonitor
 from config.Config import GLOBAL_CONFIG
 from plot.plotMain import plot_result
 from util.BaseUtil import initialize_clients
@@ -47,7 +47,8 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
             time_data=time_data,
-            round=args.round
+            round=args.round,
+            exp_type=args.exp
         )
         clients.append(client)
         tasks.append(client.start())
@@ -71,13 +72,17 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
             time_data=time_data,
-            round=args.round
+            round=args.round,
+            exp_type=args.exp
         )
         clients.append(client)
         tasks.append(client.start())
 
-    # Create monitor task
-    monitor_task = asyncio.create_task(monitor_results(clients, all_results, args.short_clients + args.long_clients, args.exp))
+    # 创建监控器实例
+    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp)
+
+    # 创建监控任务
+    monitor_task = asyncio.create_task(monitor())
     tasks.insert(0, monitor_task)
 
     return tasks, monitor_task, clients
@@ -182,6 +187,7 @@ async def main():
     filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
 
     plot_data = {
+        "exp_type": args.exp,
         "filename": filename,
         "concurrency": args.concurrency,
         "num_requests": args.num_requests,
@@ -199,7 +205,7 @@ async def main():
     except asyncio.CancelledError:
         print("Monitor task cancelled.")
 
-    plot_result(filename, args.concurrency, round(total_time, 2))
+    plot_result(args.exp, filename, args.concurrency, round(total_time, 2))
 
 
 if __name__ == "__main__":

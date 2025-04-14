@@ -3,151 +3,21 @@ import math
 import os
 import matplotlib.pyplot as plt
 
-from plot.plotUtil import xLabel_time, plot_metrics_with_annotations, setup_subplot
+from plot.plotUtil import xLabel_time, plot_metrics_with_annotations, setup_subplot, setup_subplot_client
 
 line_styles = ['-', '--', '-.', ':']
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 markers = ['o', 's', '^', 'D', 'v', '*']
 
 
-def plot_individual_clients(sorted_all_results, args_concurrency, total_time, filename):
-    # Plot individual client results
-    cols = math.ceil(math.sqrt(len(sorted_all_results)))
-    rows = math.ceil(len(sorted_all_results) / cols)
+def plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename, exp_type):
+    # 创建一个4×2的子图布局,宽高比更大
+    fig2, axs2 = plt.subplots(4, 2, figsize=(28, 20))
 
-    # 调整第一个图的大小，减小右侧留白
-    fig1, axs1 = plt.subplots(rows * 5, cols, figsize=(cols * 8, rows * 20))  # Changed from rows * 4 to rows * 5
-    # 添加大标题显示参数信息
-    fig1.suptitle(
-        f"Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}",
-        fontsize=16, y=0.99)
-
-    # Handle different axes array shapes
-    if rows == 1 and cols == 1:
-        axs1 = axs1.reshape(5, 1)  # Changed from 4 to 5
-    else:
-        axs1 = axs1.reshape(rows * 5, cols)  # Changed from rows * 4 to rows * 5
-
-    # 定义不同的线条样式
-
-    # Plot individual client results
-    for index, all_result in enumerate(sorted_all_results):
-        request_number = []
-        success_rate = []
-        total_output_tokens = []
-        total_input_tokens = []
-        latency = []
-        tokens_per_second = []
-        time_to_first_token = []
-        requests_per_second = []
-        concurrency = []
-        qps = []
-        time = []
-        tokens_count = []
-        for i in range(len(all_result)):
-            tokens_count.append(all_result[i]['total_output_tokens'] + all_result[i]['total_input_tokens'])
-            total_output_tokens.append(all_result[i]["total_output_tokens"])
-            total_input_tokens.append(all_result[i]["total_input_tokens"])
-            time.append(all_result[i]['time'])
-            success_rate.append(all_result[i]['successful_requests'] * 100 / all_result[i]['total_requests'])
-            request_number.append(all_result[i]["total_requests"])
-            latency.append(all_result[i]["latency"]["p99"])
-            tokens_per_second.append(all_result[i]["tokens_per_second"]["p99"])
-            time_to_first_token.append(all_result[i]["time_to_first_token"]["p99"])
-            requests_per_second.append(all_result[i]["requests_per_second"])
-            concurrency.append(all_result[i]["concurrency"])
-            qps.append(all_result[i]["qps"])
-
-        time_xLabel = xLabel_time(time)
-
-        row_idx = (index // cols) * 5
-        col_idx = index % cols
-
-        # First subplot: QPS
-        plot_metrics_with_annotations(axs1[row_idx][col_idx], range(len(qps)), qps, 'qps',
-                                      colors[0], markers[0], linestyle=line_styles[0])
-        setup_subplot(axs1[row_idx][col_idx],
-                      f"Client {all_result[0]['client_index']} - QPS",
-                      time_xLabel)
-
-        # Second subplot: tokens count
-        plot_metrics_with_annotations(axs1[row_idx + 1][col_idx], range(len(qps)), tokens_count, 'tokens count',
-                                      colors[0], markers[0], linestyle=line_styles[0])
-        plot_metrics_with_annotations(axs1[row_idx + 1][col_idx], range(len(qps)), total_output_tokens,
-                                      'total_output_tokens',
-                                      colors[1], markers[1], linestyle=line_styles[1])
-        plot_metrics_with_annotations(axs1[row_idx + 1][col_idx], range(len(qps)), total_input_tokens, 'total_input_tokens',
-                                      colors[2], markers[2], linestyle=line_styles[2])
-        setup_subplot(axs1[row_idx + 1][col_idx],
-                      f"Client {all_result[0]['client_index']} - Input and Output Tokens",
-                      time_xLabel,
-                      plt.FuncFormatter(lambda x, p: format(int(x), ',')))
-
-        # Third subplot: success_rate
-        plot_metrics_with_annotations(axs1[row_idx + 2][col_idx], range(len(qps)), success_rate, 'success_rate',
-                                      colors[3], markers[3], linestyle=line_styles[0])
-        setup_subplot(axs1[row_idx + 2][col_idx],
-                      f"Client {all_result[0]['client_index']} - Success Rate",
-                      time_xLabel,
-                      ylim=(max(min(success_rate) - 10, 0), 105))
-
-        # Fourth subplot: tokens per second
-        plot_metrics_with_annotations(axs1[row_idx + 3][col_idx], range(len(qps)), tokens_per_second,
-                                      'tokens_per_second',
-                                      colors[4], markers[4], xytext=(0, -15), linestyle=line_styles[0])
-        setup_subplot(axs1[row_idx + 3][col_idx],
-                      f"Client {all_result[0]['client_index']} - Tokens/s",
-                      time_xLabel)
-
-        # Fifth subplot: latency, time_to_first_token, requests_per_second
-        plot_metrics_with_annotations(axs1[row_idx + 4][col_idx], range(len(qps)), latency, 'latency',
-                                      colors[0], markers[0], linestyle=line_styles[0])
-        plot_metrics_with_annotations(axs1[row_idx + 4][col_idx], range(len(qps)), time_to_first_token,
-                                      'time_to_first_token',
-                                      colors[1], markers[1], linestyle=line_styles[1])
-        plot_metrics_with_annotations(axs1[row_idx + 4][col_idx], range(len(qps)), requests_per_second,
-                                      'requests_per_second',
-                                      colors[2], markers[2], linestyle=line_styles[2])
-        setup_subplot(axs1[row_idx + 4][col_idx],
-                      f"Client {all_result[0]['client_index']} - Latency Metrics",
-                      time_xLabel)
-
-    # Remove extra subplots if any
-    for j in range(len(sorted_all_results), cols):
-        if rows * 5 > 1:
-            for i in range(5):
-                fig1.delaxes(axs1[-5 + i][j])
-        else:
-            for i in range(5):
-                fig1.delaxes(axs1[i][j])
-
-    # 优化布局
-    fig1.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
-    # 调整大标题位置，避免与子图重叠
-    fig1.subplots_adjust(top=0.95)
-
-    # 创建 figure 文件夹（如果不存在）
-    if not os.path.exists('../figure'):
-        os.makedirs('../figure')
-
-    # 保存图片
-    fig1.savefig('figure/individual_clients' + filename + '.png', dpi=300, bbox_inches='tight')
-
-    plt.show()
-
-
-def plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename):
-    # 调整第二个图的大小
-    fig2, axs2 = plt.subplots(4, 2, figsize=(20, 20))  # Changed from 3, 2 to 4, 2
-    # 添加大标题显示参数信息
+    # 添加标题显示参数
     fig2.suptitle(
-        f"Averaged Benchmark Results - Concurrency: {args_concurrency}, "
-        f"Total Time: {total_time}", fontsize=16, y=0.99)
-
-    # 定义不同的线条样式
-    line_styles = ['-', '--', '-.', ':']
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    markers = ['o', 's', '^', 'D', 'v', '*']
+        f"{exp_type} Averaged Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}",
+        fontsize=16, y=0.98)
 
     # Plot averaged results for short/long
     for idx, (results, title) in enumerate([
@@ -241,8 +111,8 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
 
     # 优化布局
     fig2.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
-    # 调整大标题位置，避免与子图重叠
-    fig2.subplots_adjust(top=0.95)
+    # 调整子图间距，为底部图例留出空间
+    fig2.subplots_adjust(top=0.92, bottom=0.1)
 
     # 创建 figure 文件夹（如果不存在）
     if not os.path.exists('../figure'):
@@ -254,11 +124,21 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     return time_xLabel
 
 
-def plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_results):
-    # Create figure with 3 subplots
-    fig3, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 12))
+def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time, filename, exp_type, fairness_results,
+                               qps_with_time):
+    """
+    绘制综合性能图表，包括各客户端指标和公平性结果
+    """
+    # 创建一个4×2的子图布局,宽高比更大
+    fig, axs = plt.subplots(4, 2, figsize=(28, 20))
+    axs = axs.flatten()  # 将2D数组展平为1D，便于索引
 
-    # Plot QPS per client over time
+    # 添加标题显示参数
+    fig.suptitle(
+        f"{exp_type} Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}",
+        fontsize=16, y=0.98)
+
+    # 获取所有客户端
     clients = set()
     for result in sorted_all_results:
         clients.add(result[0]["client_index"])
@@ -267,88 +147,186 @@ def plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_
     short_clients = sorted([c for c in clients if "short" in c])
     long_clients = sorted([c for c in clients if "long" in c])
 
+    print(f"Short clients: {short_clients}")
+    print(f"Long clients: {long_clients}")
+
     # 暖色系用于short clients
     warm_colors = ['#FF4D4D', '#FFA64D', '#FFD700', '#FF69B4', '#FF8C69']
     # 冷色系用于long clients  
     cool_colors = ['#4169E1', '#00CED1', '#6495ED', '#483D8B', '#008B8B']
 
+    # 创建一个共享图例的句柄和标签列表
+    legend_handles = []
+    legend_labels = []
+
+    # 绘制各个客户端的指标
+    # 1. 成功率
+    plot_client_metric(axs[0], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "success_rate",
+                       "Success Rate (%)", legend_handles, legend_labels)
+
+    # 2. 每秒令牌数
+    plot_client_metric(axs[1], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "tokens_per_second",
+                       "Tokens/s", legend_handles, legend_labels)
+
+    # 3. 延迟
+    plot_client_metric(axs[2], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "latency",
+                       "Latency (ms)", legend_handles, legend_labels)
+
+    # 4. 首个令牌时间
+    plot_client_metric(axs[3], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "time_to_first_token",
+                       "Time to First Token (ms)", legend_handles, legend_labels)
+
+    # 5. 每秒请求数
+    plot_client_metric(axs[4], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "requests_per_second",
+                       "Requests per Second", legend_handles, legend_labels)
+
     times = [q for q in qps_with_time]
 
-    # 先画short clients的QPS，使用实线
-    for i, client in enumerate(short_clients):
-        client_results = next(r for r in sorted_all_results if r[0]["client_index"] == client)
-        qps_values = [result["qps"] for result in client_results]
-        ax1.plot(times, qps_values, marker=markers[i % len(markers)],
-                color=warm_colors[i % len(warm_colors)], linestyle='-',
-                label=client)
+    # 6. 每个客户端的QPS
+    plot_client_metric(axs[5], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "qps",
+                       "QPS Per Client Over Time", legend_handles, legend_labels)
 
-    # 再画long clients的QPS，使用虚线
-    for i, client in enumerate(long_clients):
-        client_results = next(r for r in sorted_all_results if r[0]["client_index"] == client)
-        qps_values = [result["qps"] for result in client_results]
-        ax1.plot(times, qps_values, marker=markers[i % len(markers)],
-                color=cool_colors[i % len(cool_colors)], linestyle='--',
-                label=client)
+    # 7. 每个客户端的服务使用量
+    plot_client_metric(axs[6], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "service",
+                       "Service Usage", legend_handles, legend_labels)
 
-    ax1.set_title("QPS Per Client Over Time", fontsize=12, pad=10)
-    ax1.set_xlabel("Time(s)", fontsize=10)
-    ax1.set_ylabel("QPS", fontsize=10)
-    ax1.tick_params(axis='both', labelsize=9)
-    ax1.grid(True, linestyle='--', alpha=0.7)
-    ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+    # 8. Jain's公平性指数放在最后
+    plot_fairness_index(axs[7], fairness_results, times)
 
-    # Plot Jain's fairness index
-    times = [q for q in qps_with_time]
-    f_results = [result["f_result"] for result in fairness_results]
-    ax2.plot(times, f_results, marker='o', color=colors[0], linestyle=line_styles[0])
-    ax2.set_title("Jain's Fairness Index Over Time", fontsize=12, pad=10)
-    ax2.set_xlabel("Time(s)", fontsize=10)
-    ax2.set_ylabel("Fairness Index", fontsize=10)
-    ax2.tick_params(axis='both', labelsize=9)
-    ax2.grid(True, linestyle='--', alpha=0.7)
-    ax2.set_ylim(0, 1)
-
-    # Plot service per client over time
-    # 先画short clients，使用实线
-    for i, client in enumerate(short_clients):
-        client_service = []
-        for result in fairness_results:
-            service_value = next((s["service"] for s in result["s_result"] if s["client"] == client), None)
-            client_service.append(service_value)
-        ax3.plot(times, client_service, marker=markers[i % len(markers)], 
-                color=warm_colors[i % len(warm_colors)], linestyle='-', 
-                label=client)
-
-    # 再画long clients，使用虚线
-    for i, client in enumerate(long_clients):
-        client_service = []
-        for result in fairness_results:
-            service_value = next((s["service"] for s in result["s_result"] if s["client"] == client), None)
-            client_service.append(service_value)
-        ax3.plot(times, client_service, marker=markers[i % len(markers)], 
-                color=cool_colors[i % len(cool_colors)], linestyle='--', 
-                label=client)
-
-    ax3.set_title("Service Usage Per Client Over Time", fontsize=12, pad=10)
-    ax3.set_xlabel("Time(s)", fontsize=10)
-    ax3.set_ylabel("Service Usage", fontsize=10)
-    ax3.tick_params(axis='both', labelsize=9)
-    ax3.grid(True, linestyle='--', alpha=0.7)
-    ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
+    # 在图形底部添加共享图例
+    fig.legend(handles=legend_handles, labels=legend_labels,
+               loc='center', bbox_to_anchor=(0.5, 0.02),
+               ncol=len(short_clients) + len(long_clients),
+               fontsize=10)
 
     # 优化布局
-    fig3.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
-    # 调整大标题位置，避免与子图重叠
-    fig3.subplots_adjust(right=0.85)
+    fig.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
+    # 调整子图间距，为底部图例留出空间
+    fig.subplots_adjust(top=0.92, bottom=0.1)
 
-    # 创建 figure 文件夹（如果不存在）
+    # 创建figure文件夹（如果不存在）
     if not os.path.exists('figure'):
         os.makedirs('figure')
+
+    # 保存图表
+    fig.savefig(f'figure/comprehensive_results{filename}.png', dpi=300, bbox_inches='tight')
+
     plt.show()
-    fig3.savefig('figure/fairness_results' + filename + '.png', dpi=300, bbox_inches='tight')
 
 
-def plot_result(filename, args_concurrency, total_time):
+def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm_colors, cool_colors, metric_key, title,
+                       legend_handles, legend_labels, ylim=None):
+    """绘制客户端指标"""
+    # 先绘制short clients，使用实线
+    for i, client in enumerate(short_clients):
+        client_results = next(r for r in sorted_all_results if r[0]["client_index"] == client)
+        time = [result['time'] for result in client_results]
+        time_xLabel = xLabel_time(time)
+
+        if metric_key == "success_rate":
+            values = [result['successful_requests'] * 100 / result['total_requests'] for result in client_results]
+        elif metric_key in ["tokens_per_second", "latency", "time_to_first_token"]:
+            values = [result[metric_key]["p99"] for result in client_results]
+        elif metric_key == "service":
+            values = [result['total_input_tokens'] + result['total_output_tokens'] * 2 for result in client_results]
+        else:
+            values = [result[metric_key] for result in client_results]
+
+        line = ax.plot(range(len(time)), values, marker=markers[i % len(markers)],
+                       color=warm_colors[i % len(warm_colors)], linestyle='-',
+                       label=client)[0]
+        if client not in legend_labels:
+            legend_handles.append(line)
+            legend_labels.append(client)
+
+    # 再绘制long clients，使用虚线
+    for i, client in enumerate(long_clients):
+        client_results = next(r for r in sorted_all_results if r[0]["client_index"] == client)
+        time = [result['time'] for result in client_results]
+        time_xLabel = xLabel_time(time)
+
+        if metric_key == "success_rate":
+            values = [result['successful_requests'] * 100 / result['total_requests'] for result in client_results]
+        elif metric_key in ["tokens_per_second", "latency", "time_to_first_token"]:
+            values = [result[metric_key]["p99"] for result in client_results]
+        elif metric_key == "service":
+            values = [result['total_input_tokens'] + result['total_output_tokens'] * 2 for result in client_results]
+        else:
+            values = [result[metric_key] for result in client_results]
+
+        line = ax.plot(range(len(time)), values, marker=markers[i % len(markers)],
+                       color=cool_colors[i % len(cool_colors)], linestyle='--',
+                       label=client)[0]
+        if client not in legend_labels:
+            legend_handles.append(line)
+            legend_labels.append(client)
+
+    # 计算所有值以确定合适的y轴范围
+    all_values = []
+    for client in short_clients + long_clients:
+        try:
+            client_results = next(r for r in sorted_all_results if r[0]["client_index"] == client)
+            if metric_key == "success_rate":
+                values = [result['successful_requests'] * 100 / result['total_requests'] for result in client_results]
+            elif metric_key in ["tokens_per_second", "latency", "time_to_first_token"]:
+                values = [result[metric_key]["p99"] for result in client_results]
+            elif metric_key == "service":
+                values = [result['total_input_tokens'] + result['total_output_tokens'] * 2 for result in client_results]
+            else:
+                values = [result[metric_key] for result in client_results]
+            all_values.extend(values)
+        except (StopIteration, KeyError, ZeroDivisionError) as e:
+            print(f"Warning: Error processing {client} for {metric_key}: {e}")
+
+    # 如果没有提供ylim且有足够的值，则自动计算合适的范围
+    if ylim is None and all_values:
+        try:
+            min_val = min(v for v in all_values if v is not None)
+            max_val = max(v for v in all_values if v is not None)
+            margin = (max_val - min_val) * 0.1
+            computed_ylim = (max(0, min_val - margin), max_val + margin)
+            if metric_key == "success_rate":
+                computed_ylim = (max(0, min_val - 5), 105)
+        except (ValueError, TypeError):
+            computed_ylim = None
+    else:
+        computed_ylim = ylim
+
+    # 设置子图属性
+    setup_subplot_client(ax, title, time_xLabel, ylim=computed_ylim)
+
+
+def plot_fairness_index(ax, fairness_results, times):
+    """绘制Jain's公平性指数"""
+    f_results = [result["f_result"] for result in fairness_results]
+    line, = ax.plot(times, f_results, marker='o', color='#1f77b4', linestyle='-', linewidth=2)
+
+    # 在线上显示数值
+    for i, (x, y) in enumerate(zip(times, f_results)):
+        ax.annotate(f'{y:.3f}',
+                    xy=(x, y),
+                    xytext=(0, 10),
+                    textcoords='offset points',
+                    ha='center',
+                    fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+
+    ax.set_title("Jain's Fairness Index Over Time", fontsize=12, pad=10)
+    ax.set_xlabel("Time(s)", fontsize=10)
+    ax.set_ylabel("Fairness Index", fontsize=10)
+    ax.tick_params(axis='both', labelsize=9)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.set_ylim(0, 1)
+
+
+def plot_result(exp_type, filename, args_concurrency, total_time):
     with open("results/" + filename, 'r') as f:
         all_results = json.load(f)
 
@@ -374,9 +352,10 @@ def plot_result(filename, args_concurrency, total_time):
         # Combine sorted results with short first, then long
         sorted_all_results = short_results + long_results
 
-        plot_individual_clients(sorted_all_results, args_concurrency, total_time, filename)
-        qps_with_time = plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename)
-        plot_fairness_results(filename, fairness_results, qps_with_time, sorted_all_results)
+        qps_with_time = plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename,
+                                              exp_type)
+        plot_comprehensive_results(sorted_all_results, args_concurrency, total_time, filename, exp_type,
+                                   fairness_results, qps_with_time)
     else:
         print("No results found")
         return
@@ -386,4 +365,4 @@ if __name__ == "__main__":
     with open("tmp_result/plot_data.json", "r") as f:
         data = json.load(f)
 
-    plot_result(data["filename"], data["concurrency"], data["total_time"])
+    plot_result(data["exp_type"], data["filename"], data["concurrency"], data["total_time"])
