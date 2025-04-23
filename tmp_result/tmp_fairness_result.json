@@ -1,482 +1,56 @@
 [
     {
-        "f_result": 0.2939985135398861,
+        "f_result": 0.9990219689898149,
         "s_result": [
             {
-                "service": 4948,
+                "service": 40960,
                 "client": "short_0"
             },
             {
-                "service": 5378,
+                "service": 41725,
                 "client": "short_1"
             },
             {
-                "service": 3875,
+                "service": 39702,
                 "client": "short_2"
             },
             {
-                "service": 5900,
+                "service": 38784,
                 "client": "short_3"
             },
             {
-                "service": 5087,
+                "service": 38462,
                 "client": "short_4"
-            },
-            {
-                "service": 5057,
-                "client": "short_5"
-            },
-            {
-                "service": 181626,
-                "client": "long_0"
-            },
-            {
-                "service": 146514,
-                "client": "long_1"
             }
         ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            20,
-            11,
-            0,
-            104,
-            0
-        ]
+        "time": "2025-04-23 16:27:57",
+        "exchange_count": 0
     },
     {
-        "f_result": 0.7512382251748102,
+        "f_result": 0.9981460039102462,
         "s_result": [
             {
-                "service": 19180,
-                "client": "short_2"
-            },
-            {
-                "service": 21604,
-                "client": "short_0"
-            },
-            {
-                "service": 21889,
-                "client": "short_5"
-            },
-            {
-                "service": 22479,
+                "service": 41838,
                 "client": "short_4"
             },
             {
-                "service": 21478,
-                "client": "short_1"
-            },
-            {
-                "service": 22775,
+                "service": 37876,
                 "client": "short_3"
             },
             {
-                "service": 62485,
-                "client": "long_1"
-            },
-            {
-                "service": 66148,
-                "client": "long_0"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            21,
-            56,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.782888371398154,
-        "s_result": [
-            {
-                "service": 22906,
+                "service": 40629,
                 "client": "short_2"
             },
             {
-                "service": 22016,
-                "client": "short_1"
-            },
-            {
-                "service": 21405,
+                "service": 38127,
                 "client": "short_0"
             },
             {
-                "service": 23555,
-                "client": "short_5"
-            },
-            {
-                "service": 23793,
-                "client": "short_4"
-            },
-            {
-                "service": 22990,
-                "client": "short_3"
-            },
-            {
-                "service": 50975,
-                "client": "long_1"
-            },
-            {
-                "service": 69701,
-                "client": "long_0"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            23,
-            41,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.6565837015160145,
-        "s_result": [
-            {
-                "service": 21448,
-                "client": "short_0"
-            },
-            {
-                "service": 20275,
+                "service": 37655,
                 "client": "short_1"
-            },
-            {
-                "service": 21361,
-                "client": "short_2"
-            },
-            {
-                "service": 21034,
-                "client": "short_3"
-            },
-            {
-                "service": 20376,
-                "client": "short_5"
-            },
-            {
-                "service": 22554,
-                "client": "short_4"
-            },
-            {
-                "service": 93523,
-                "client": "long_1"
-            },
-            {
-                "service": 51747,
-                "client": "long_0"
             }
         ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            25,
-            27,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.8416244997005751,
-        "s_result": [
-            {
-                "service": 21726,
-                "client": "short_1"
-            },
-            {
-                "service": 21685,
-                "client": "short_5"
-            },
-            {
-                "service": 23136,
-                "client": "short_3"
-            },
-            {
-                "service": 23808,
-                "client": "short_2"
-            },
-            {
-                "service": 25012,
-                "client": "short_0"
-            },
-            {
-                "service": 24024,
-                "client": "short_4"
-            },
-            {
-                "service": 53573,
-                "client": "long_0"
-            },
-            {
-                "service": 54720,
-                "client": "long_1"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            27,
-            12,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.7386620971955927,
-        "s_result": [
-            {
-                "service": 20077,
-                "client": "short_5"
-            },
-            {
-                "service": 21220,
-                "client": "short_1"
-            },
-            {
-                "service": 22637,
-                "client": "short_3"
-            },
-            {
-                "service": 22285,
-                "client": "short_2"
-            },
-            {
-                "service": 22928,
-                "client": "short_4"
-            },
-            {
-                "service": 21912,
-                "client": "short_0"
-            },
-            {
-                "service": 75574,
-                "client": "long_0"
-            },
-            {
-                "service": 53984,
-                "client": "long_1"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            28,
-            57,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.7186921615441084,
-        "s_result": [
-            {
-                "service": 22246,
-                "client": "short_5"
-            },
-            {
-                "service": 21837,
-                "client": "short_1"
-            },
-            {
-                "service": 19889,
-                "client": "short_0"
-            },
-            {
-                "service": 20957,
-                "client": "short_2"
-            },
-            {
-                "service": 20402,
-                "client": "short_3"
-            },
-            {
-                "service": 22014,
-                "client": "short_4"
-            },
-            {
-                "service": 76589,
-                "client": "long_1"
-            },
-            {
-                "service": 57830,
-                "client": "long_0"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            30,
-            42,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.8252226886764822,
-        "s_result": [
-            {
-                "service": 22327,
-                "client": "short_0"
-            },
-            {
-                "service": 23364,
-                "client": "short_3"
-            },
-            {
-                "service": 23453,
-                "client": "short_2"
-            },
-            {
-                "service": 23376,
-                "client": "short_1"
-            },
-            {
-                "service": 22724,
-                "client": "short_4"
-            },
-            {
-                "service": 23232,
-                "client": "short_5"
-            },
-            {
-                "service": 64117,
-                "client": "long_0"
-            },
-            {
-                "service": 40897,
-                "client": "long_1"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            32,
-            27,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.6671060368238164,
-        "s_result": [
-            {
-                "service": 20697,
-                "client": "short_0"
-            },
-            {
-                "service": 21416,
-                "client": "short_4"
-            },
-            {
-                "service": 21945,
-                "client": "short_5"
-            },
-            {
-                "service": 21269,
-                "client": "short_3"
-            },
-            {
-                "service": 23956,
-                "client": "short_1"
-            },
-            {
-                "service": 19958,
-                "client": "short_2"
-            },
-            {
-                "service": 91688,
-                "client": "long_1"
-            },
-            {
-                "service": 42733,
-                "client": "long_0"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            34,
-            12,
-            0,
-            104,
-            0
-        ]
-    },
-    {
-        "f_result": 0.6174795250367198,
-        "s_result": [
-            {
-                "service": 21466,
-                "client": "short_2"
-            },
-            {
-                "service": 22141,
-                "client": "short_0"
-            },
-            {
-                "service": 20926,
-                "client": "short_3"
-            },
-            {
-                "service": 21115,
-                "client": "short_4"
-            },
-            {
-                "service": 23572,
-                "client": "short_5"
-            },
-            {
-                "service": 22924,
-                "client": "short_1"
-            },
-            {
-                "service": 108397,
-                "client": "long_0"
-            },
-            {
-                "service": 66070,
-                "client": "long_1"
-            }
-        ],
-        "time": [
-            2025,
-            4,
-            14,
-            17,
-            35,
-            57,
-            0,
-            104,
-            0
-        ]
+        "time": "2025-04-23 16:29:27",
+        "exchange_count": 0
     }
 ]

@@ -39,7 +39,7 @@ def setup_subplot_client(ax, title, x_labels, ylim=None):
     ax.set_xlabel("Time", fontsize=10)
     ax.set_ylabel(title, fontsize=10)
     ax.set_xticks(range(len(x_labels)))
-    ax.set_xticklabels(x_labels, rotation=45)
+    ax.set_xticklabels(x_labels)
     ax.tick_params(axis='both', labelsize=9)
     ax.grid(True, linestyle='--', alpha=0.7)
 
@@ -51,3 +51,26 @@ def setup_subplot_client(ax, title, x_labels, ylim=None):
                 ax.set_ylim(bottom, top)
         except (TypeError, ValueError):
             print(f"Warning: Invalid ylim value: {ylim}. Skipping ylim setting.")
+
+
+def plot_fairness_index(ax, fairness_results, times):
+    """绘制Jain's公平性指数"""
+    f_results = [result["f_result"] for result in fairness_results]
+    line, = ax.plot(times, f_results, marker='o', color='#1f77b4', linestyle='-', linewidth=2)
+
+    # 在线上显示数值
+    for i, (x, y) in enumerate(zip(times, f_results)):
+        ax.annotate(f'{y:.3f}',
+                    xy=(x, y),
+                    xytext=(0, -10),
+                    textcoords='offset points',
+                    ha='center',
+                    fontsize=9,
+                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+
+    ax.set_title("Jain's Fairness Index Over Time", fontsize=12, pad=10)
+    ax.set_xlabel("Time(s)", fontsize=10)
+    ax.set_ylabel("Fairness Index", fontsize=10)
+    ax.tick_params(axis='both', labelsize=9)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.set_ylim(0, 1)

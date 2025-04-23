@@ -2,10 +2,10 @@ from datetime import datetime
 
 GLOBAL_CONFIG = {
     "output_tokens": 200,
-    "alpha": 0.8,
+    "alpha": 0.5,
     "fairness_ratio_LFS": 0.15,
     "fairness_ratio_VTC": 0.5,
-    'ADJUST_SENSITIVITY': 0.5,
+    'ADJUST_SENSITIVITY': 1,
     "b": 1.5,
     "whether_fairness": 1,
     "max_granularity": 10,

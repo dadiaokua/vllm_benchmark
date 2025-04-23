@@ -55,14 +55,14 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
 
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout,
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
-                 use_time_data, latency_slo, active_ratio):
+                 use_time_data, latency_slo, active_ratio, time_ratio):
     # 使用全局时间基准点，而不是相对于上一个请求的时间
     global_start_time = time.time()
     request_count = 0
 
     while time.time() - global_start_time < round_time:
         target_time = get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data,
-                                      time_data, active_ratio, round_time)
+                                      time_data, active_ratio, round_time, time_ratio)
 
         # 计算需要等待的时间
         now = time.time()
@@ -84,7 +84,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
             f"Drift={drift:.3f}s, QPS target={rate_lambda}")
 
         # 随机选择一个请求内容
-        request = random.choice(sample_content)
+        request = sample_content[request_count % len(sample_content)]
 
         # 根据task_id轮询选择客户端
         selected_client = selected_clients[task_id % len(selected_clients)]
@@ -121,17 +121,37 @@ async def process_request(client, output_tokens, request_timeout, request, worke
 
 
 def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data, active_ratio,
-                    window_length):
+                    window_length, time_ratio):
     if use_time_data:
         return time_data[request_count]
     else:
         raw_time = calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution)
 
+        # 应用time_ratio调整整体发送时间
+        time_since_start = raw_time - global_start_time
+        
+        # 使用非线性映射来避免在窗口末尾堆积请求
+        # 当time_ratio > 1时，使用一个平滑的函数来分散请求
+        if time_ratio > 1 and time_since_start <= window_length:
+            # 使用sigmoid类函数进行平滑映射
+            progress = time_since_start / window_length  # 0到1之间的进度
+            # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
+            adjusted_progress = progress ** (1/time_ratio)
+            adjusted_time_since_start = adjusted_progress * window_length
+        else:
+            # time_ratio <= 1的情况，直接线性缩放
+            adjusted_time_since_start = time_since_start * time_ratio
+            
+        # 确保调整后的时间不会超出原始窗口
+        if adjusted_time_since_start > window_length and time_since_start <= window_length:
+            adjusted_time_since_start = window_length
+        
+        raw_time = global_start_time + adjusted_time_since_start
+
         # 控制发送时间段 - 更频繁的活跃/非活跃切换
         time_since_start = raw_time - global_start_time
 
         # 使用更小的窗口长度，以实现更频繁的切换
-        # 例如，如果原来的窗口是100秒，现在我们使用10秒的小窗口
         small_window_length = min(GLOBAL_CONFIG['max_granularity'], window_length)  # 默认使用10秒的小窗口，除非原窗口更小
 
         # 计算在小窗口内的位置
@@ -146,7 +166,7 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
             wait_time = small_window_length - small_window_position
 
             # 可选：添加一些随机性，避免所有请求都在窗口开始时堆积
-            random_offset = np.random.uniform(0, active_duration)  # 小的随机偏移，最多0.1秒
+            random_offset = np.random.uniform(0, active_duration)  # 小的随机偏移
 
             adjusted_time = raw_time + wait_time + random_offset
             return adjusted_time

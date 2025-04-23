@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import time
 import argparse
 from datetime import datetime
@@ -10,30 +11,48 @@ from config.Config import GLOBAL_CONFIG
 from plot.plotMain import plot_result
 from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
-from util.JsonFormatterUtil import prepare_benchmark_data
+from util.JsonFormatterUtil import prepare_benchmark_data, make_prefix_list
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
 
 
-async def setup_benchmark_tasks(args, all_results, update_event):
+async def setup_benchmark_tasks(args, all_results):
     """Setup and create benchmark tasks"""
     tasks = []
     clients = []
-
-    short_formatted_json, time_data = await prepare_benchmark_data('short')
-    long_formatted_json, time_data = await prepare_benchmark_data('long')
 
     tokenizer = AutoTokenizer.from_pretrained(
         '/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659',
         trust_remote_code=True)
 
+    # short_formatted_json, time_data = await prepare_benchmark_data('short', args.exp, tokenizer, max_request_number)
+    # long_formatted_json, time_data = await prepare_benchmark_data('long', args.exp, tokenizer, max_request_number)
+
+    with open("prompt_hub/short_prompts.json", "r", encoding="utf-8") as f:
+        short_formatted_json = json.load(f)
+
+    with open("prompt_hub/long_prompts.json", "r", encoding="utf-8") as f:
+        long_formatted_json = json.load(f)
+
+    # if args.exp == "DLPM":
+    #     short_formatted_json = make_prefix_list(short_formatted_json, tokenizer, 200)
+    #     long_formatted_json = make_prefix_list(long_formatted_json, tokenizer, 1000)
+
     openAI_client = initialize_clients(args.local_port)
+
+    if len(args.short_qps) != 1 and len(args.short_qps) != args.short_clients:
+        print("short_qps must be a single value or a list of values equal to the number of short clients")
+        return None, None, None
+    
+    if len(args.long_qps) != 1 and len(args.long_qps) != args.long_clients:
+        print("long_qps must be a single value or a list of values equal to the number of long clients")
+        return None, None, None 
 
     # Create short request clients
     for index in range(args.short_clients):
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
-            qps=args.short_qps,
+            qps=int(args.short_qps[0] if len(args.short_qps) == 1 else args.short_qps[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -46,9 +65,10 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             formatted_json=short_formatted_json,
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
-            time_data=time_data,
+            time_data=None,
             round=args.round,
-            exp_type=args.exp
+            exp_type=args.exp,
+            qps_ratio=args.short_client_qps_ratio,
         )
         clients.append(client)
         tasks.append(client.start())
@@ -58,7 +78,7 @@ async def setup_benchmark_tasks(args, all_results, update_event):
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
-            qps=args.long_qps,
+            qps=int(args.long_qps[0] if len(args.long_qps) == 1 else args.long_qps[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -71,9 +91,10 @@ async def setup_benchmark_tasks(args, all_results, update_event):
             formatted_json=long_formatted_json,
             OpenAI_client=openAI_client,
             tokenizer=tokenizer,
-            time_data=time_data,
+            time_data=None,
             round=args.round,
-            exp_type=args.exp
+            exp_type=args.exp,
+            qps_ratio=args.long_client_qps_ratio
         )
         clients.append(client)
         tasks.append(client.start())
@@ -95,8 +116,12 @@ async def main():
                         default=["http://127.0.0.1"])
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
     parser.add_argument("--distribution", type=str, help="Distribution of request")
-    parser.add_argument("--short_qps", type=int, help="Qps of short client request", required=True, default=1)
-    parser.add_argument("--long_qps", type=int, help="Qps of long client request", required=True, default=1)
+    parser.add_argument("--short_qps", type=str, nargs='+', help="Qps of short client request", required=True, default=1.0)
+    parser.add_argument("--short_client_qps_ratio", type=float, required=True, help="Qps ratio of short client",
+                        default=1)
+    parser.add_argument("--long_qps", type=str, nargs='+', help="Qps of long client request", required=True, default=1.0)
+    parser.add_argument("--long_client_qps_ratio", type=float, required=True, help="Qps ratio of long client",
+                        default=1)
     parser.add_argument("--concurrency", type=int, help="concurrency", default=50)
     parser.add_argument("--num_requests", type=int, help="Number of requests", default=1000)
     parser.add_argument("--short_clients", type=int, help="Number of client send short context", default=1)
@@ -119,7 +144,9 @@ async def main():
     print(f"vLLM Server URL: {args.vllm_url}")
     print(f"Distribution: {args.distribution}")
     print(f"Short QPS: {args.short_qps}")
+    print(f"Short Client QPS Ratio: {args.short_client_qps_ratio}")
     print(f"Long QPS: {args.long_qps}")
+    print(f"Long Client QPS Ratio: {args.long_client_qps_ratio}")
     print(f"Concurrency: {args.concurrency}")
     print(f"Number of Requests: {args.num_requests}")
     print(f"Short Clients: {args.short_clients}")
@@ -140,10 +167,9 @@ async def main():
         json.dump([], f)
 
     all_results = asyncio.Queue()
-    update_event = asyncio.Event()
 
     start_time = time.time()
-    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, update_event)
+    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results)
 
     try:
         benchmark_timeout = GLOBAL_CONFIG['exp_time']
@@ -182,7 +208,7 @@ async def main():
 
     # Create a more descriptive filename with date, time, and benchmark parameters
     filename = (
-        f"{start_datetime.strftime('%m%d_%H-%M')}_to_{end_datetime.strftime('%H-%M')}.json"
+        f"{args.exp}_{start_datetime.strftime('%m%d_%H-%M')}_to_{end_datetime.strftime('%H-%M')}.json"
     )
     filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
 
@@ -191,7 +217,9 @@ async def main():
         "filename": filename,
         "concurrency": args.concurrency,
         "num_requests": args.num_requests,
-        "total_time": round(total_time, 2)
+        "total_time": round(total_time, 2),
+        "short_client_qps_ratio": args.short_client_qps_ratio,
+        "long_client_qps_ratio": args.long_client_qps_ratio
     }
 
     save_benchmark_results(filename, benchmark_results, plot_data)

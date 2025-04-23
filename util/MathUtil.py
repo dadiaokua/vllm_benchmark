@@ -1,19 +1,63 @@
+import os
+
 import numpy as np
 
 from config.Config import GLOBAL_CONFIG
 from util.BaseUtil import selectClients_LFS, selectClients_VTC, exchange_resources
 
+import datetime
 
-def calculate_Jains_index(clients):
-    fairness_ratio = [clienr.fairness_ratio for clienr in clients]
+from util.FileSaveUtil import save_to_file
+
+
+def calculate_Jains_index(clients, exp_type):
+    """
+    Calculates Jain's Fairness Index for a list of clients based on their fairness_ratio.
+    Logs the calculation details with a timestamp to a file.
+    """
+    timestamp = datetime.datetime.now().isoformat()
+    log_entry_prefix = f"[{timestamp}] "
+
+    fairness_ratio = [client.fairness_ratio for client in clients]  # Corrected typo: clienr -> client
     n = len(fairness_ratio)
+
+    log_message = f"{log_entry_prefix}Calculating Jain's Index for {n} clients. Fairness Ratios: {fairness_ratio}. "
+
     if n == 0:
-        return 0  # Avoid division by zero
+        j = 0  # Avoid division by zero, define result as 0 for no clients
+        log_message += f"Result: {j} (n=0)."
+    else:
+        sum_service = sum(fairness_ratio)
+        sum_squares = sum(s ** 2 for s in fairness_ratio)
+        denominator = n * sum_squares
 
-    sum_service = sum(fairness_ratio)
-    sum_squares = sum(s ** 2 for s in fairness_ratio)
+        log_message += f"Sum(ratios): {sum_service}, Sum(ratios^2): {sum_squares}, Denominator (n * Sum(ratios^2)): {denominator}. "
 
-    j = (sum_service ** 2) / (n * sum_squares)
+        if denominator == 0:
+            # Handle division by zero. If all ratios are 0, fairness could be considered perfect (1),
+            # but division by zero occurs. If ratios are non-zero but sum_squares is 0 (impossible for real numbers unless n=0),
+            # it's an edge case. Returning 0 avoids error, though 1 might be contextually better if all ratios are equal.
+            # Let's return 0 for safety against division error.
+            j = 0
+            log_message += f"Result: {j} (Denominator is zero)."
+        else:
+            j = (sum_service ** 2) / denominator
+            log_message += f"Result: {j}."
+
+    # Append the log message to the file
+    try:
+        # Define the log directory and file path
+        LOG_DIR = "tmp_result"
+        LOG_FILE = os.path.join(LOG_DIR, f"{exp_type}_jains_index_calculation_log_{GLOBAL_CONFIG['monitor_file_time']}.txt")
+
+        # Ensure the log directory exists
+        os.makedirs(LOG_DIR, exist_ok=True)
+        save_to_file(LOG_FILE, log_message)
+    except IOError as e:
+        print(f"{log_entry_prefix}Error writing to log file {LOG_FILE}: {e}")
+    except Exception as e:
+        print(f"{log_entry_prefix}An unexpected error occurred during logging: {e}")
+
     return j
 
 
@@ -48,29 +92,17 @@ async def fairness_result(clients, exp_type):
 
         # Update client attributes
         client.service = service_value
-        client.service_div_latency = service_value / client.avg_latency_div_standard_latency
 
     # Calculate fairness ratios in one pass
     alpha = GLOBAL_CONFIG['alpha']
     for client in clients:
-        if exp_type.lower() == "lfs":
-            client.fairness_ratio = (1 - client.service / max_service) * (
-                    1 - alpha) + alpha * (client.slo_violation_count / client.results[-1]['successful_requests'])
-        elif exp_type.lower() == "vtc":
-            client.fairness_ratio = client.service / max_service
-        else:
-            client.fairness_ratio = 1
+        client.fairness_ratio = (client.service / max_service) * (
+                1 - alpha) + alpha * (client.slo_violation_count / client.results[-1]['total_requests'])
 
     # Calculate Jain's fairness index
-    tmp_jains_index = calculate_Jains_index(clients)
+    tmp_jains_index = calculate_Jains_index(clients, exp_type)
 
     return tmp_jains_index, service
-
-
-def fairness_score(client, max_service):
-    latency_ratio = client.avg_latency_div_standard_latency or 1e-6  # 避免除0
-    service_ratio = client.service / max_service if max_service != 0 else 0
-    return GLOBAL_CONFIG['alpha'] * latency_ratio + (1 - GLOBAL_CONFIG['alpha']) * (1 - service_ratio)
 
 
 async def is_fairness_LFSLLM(clients, exp_type):
@@ -78,18 +110,21 @@ async def is_fairness_LFSLLM(clients, exp_type):
         print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
         return
     iteration = 0
+    count = 0
 
     while iteration < (len(clients) - 1):
         print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
         clients.sort(key=lambda client: client.fairness_ratio)
-        client1, client2 = selectClients_LFS(clients)
-        if client1 is not None and client2 is not None:
-            exchange_resources(client1, client2, clients, exp_type)
+        client_low_fairness_ratio, client_high_fairness_ratio = selectClients_LFS(clients)
+        if client_low_fairness_ratio is not None and client_high_fairness_ratio is not None:
+            exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, clients, exp_type)
+            count += 1
         else:
             break
         iteration += 1
 
     print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
+    return count
 
 
 async def is_fairness_VTC(clients, exp_type):
@@ -97,25 +132,41 @@ async def is_fairness_VTC(clients, exp_type):
         print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
         return
     iteration = 0
+    count = 0
 
     while iteration < (len(clients) - 1):
         print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
-        clients.sort(key=lambda client: client.fairness_ratio)
+        clients.sort(key=lambda client: client.service)
         client1, client2 = selectClients_VTC(clients)
         if client1 is not None and client2 is not None:
             exchange_resources(client1, client2, clients, exp_type)
+            count +=1
         else:
             break
         iteration += 1
 
     print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
+    return count
 
 
 async def is_fairness_DLPM(clients, exp_type):
     if len(clients) < 2:
         print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
         return
+    iteration = 0
+    count = 0
+    while iteration < (len(clients) - 1):
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
+        clients.sort(key=lambda client: client.service)
+        client1, client2 = selectClients_VTC(clients)
+        if client1 is not None and client2 is not None:
+            exchange_resources(client1, client2, clients, exp_type)
+            count += 1
+        else:
+            break
+        iteration += 1
 
+    return count
 
 def calculate_percentile(values, percentile, reverse=False):
     """Calculate percentile value from a list"""
@@ -126,7 +177,7 @@ def calculate_percentile(values, percentile, reverse=False):
 
 
 def calculate_metrics(concurrency, request_timeout, client_id, results, start_time, end_time, num_requests, qps,
-                      output_tokens, latency_slo):
+                      output_tokens, latency_slo, fairness_ratio):
     # Calculate metrics
     total_elapsed_time = end_time - start_time
     total_tokens = sum(tokens for tokens, _, _, _, _, _ in results if tokens is not None)
@@ -151,10 +202,12 @@ def calculate_metrics(concurrency, request_timeout, client_id, results, start_ti
     ttft_percentiles = [calculate_percentile(ttft_list, p) for p in percentiles]
 
     return {
+        "latency_slo": latency_slo,
         "slo_violation_count": slo_violation_count,
         "avg_latency_div_standard_latency": avg_latency_div_standard_latency,
         "time": end_time,
         "qps": qps,
+        "fairness_ratio": fairness_ratio,
         "total_requests": num_requests,
         "successful_requests": successful_requests,
         "concurrency": concurrency,

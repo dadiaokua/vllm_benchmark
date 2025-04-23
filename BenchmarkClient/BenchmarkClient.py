@@ -14,7 +14,7 @@ class BenchmarkClient:
 
     def __init__(self, client_type, client_index, qps, port, api_key, tokenizer, exp_type,
                  distribution, request_timeout, concurrency, round, round_time, sleep, time_data,
-                 result_queue, formatted_json, OpenAI_client, use_time_data=0):
+                 result_queue, formatted_json, OpenAI_client, qps_ratio, use_time_data=0):
         """Initialize a benchmark client
 
         Args:
@@ -37,6 +37,7 @@ class BenchmarkClient:
         self.client_index = client_index
         self.client_id = f"{client_type}_{client_index}"
         self.qps = qps
+        self.qps_ratio = qps_ratio
         self.port = port
         self.api_key = api_key
         self.distribution = distribution
@@ -51,7 +52,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.round = round
         self.exp_type = exp_type
-        self.latency_slo = random.randint(8, 15)
+        self.latency_slo = 10
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1
@@ -59,7 +60,8 @@ class BenchmarkClient:
         self.service_div_latency = -1
         self.exchange_Resources_Times = 0
         self.active_ratio = 1.0
-        self.fairness_ratio = -1
+        self.time_ratio = 1.0
+        self.fairness_ratio = 0
         self.credit = 0
 
         self.openAI_client = OpenAI_client
@@ -78,6 +80,7 @@ class BenchmarkClient:
 
         for i in range(self.round):
             # Run benchmark with current configuration
+            self.qps = self.qps * self.qps_ratio
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qps}")
             result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qps, i, self.latency_slo)
 

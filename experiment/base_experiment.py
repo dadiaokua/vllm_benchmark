@@ -1,7 +1,10 @@
 import asyncio
+import random
 import time
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 
+from util.JsonFormatterUtil import make_prefix_list
 from util.MathUtil import calculate_metrics
 from util.RequestUtil import worker
 
@@ -41,6 +44,7 @@ class BaseExperiment:
         self.config_round = config.get('config_round', 1)
         self.latency_slo = config.get('latency_slo', 10)
         self.active_ratio = client.active_ratio
+        self.time_ratio = client.time_ratio
 
         self.qps_per_worker = 0
         self.exp_type = ''
@@ -82,15 +86,34 @@ class BaseExperiment:
 
         # 记录开始时间
         self.start_time = time.time()
-        print(f"[Client {self.client_id}] Benchmark started at {self.start_time}")
-
-        # 创建工作线程
+        print(
+            f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")        # 创建工作线程
         print(f"[Client {self.client_id}] Creating {self.concurrency} workers")
+        # Split formatted_json into equal chunks based on concurrency
+        chunk_size = len(self.formatted_json) // self.concurrency
+        remaining = len(self.formatted_json) % self.concurrency
+        total_size = len(self.formatted_json)
+
         for worker_id in range(self.concurrency):
+            # Randomly select a starting point
+            start_idx = random.randint(0, total_size - chunk_size - (1 if remaining > 0 else 0))
+            end_idx = start_idx + chunk_size + (1 if remaining > 0 else 0)
+            remaining = max(0, remaining - 1)  # Decrement remaining if needed
+            
+            # Handle wrap-around case if end_idx exceeds list length
+            if end_idx > total_size:
+                worker_json = self.formatted_json[start_idx:] + self.formatted_json[:end_idx - total_size]
+            else:
+                worker_json = self.formatted_json[start_idx:end_idx]
+            if self.exp_type == "DLPM":
+                worker_json = make_prefix_list(worker_json, self.tokenizer, 200 if "short" in self.client_id else 1000)
+            else:
+                random.shuffle(worker_json)
+
             worker_task = asyncio.create_task(
                 worker(
                     self.openAI_client,
-                    semaphore,
+                    semaphore, 
                     self.results,
                     self.output_tokens,
                     self.client_id,
@@ -99,13 +122,14 @@ class BaseExperiment:
                     self.round_time,
                     self.qps_per_worker,
                     self.distribution,
-                    self.formatted_json,
+                    worker_json,
                     self.config_round,
                     worker_id,
                     self.time_data,
                     self.use_time_data,
                     self.latency_slo,
-                    self.active_ratio
+                    self.active_ratio,
+                    self.time_ratio
                 )
             )
             workers.append(worker_task)
@@ -141,7 +165,8 @@ class BaseExperiment:
             self.num_requests,
             self.qps,
             self.output_tokens,
-            self.latency_slo
+            self.latency_slo,
+            self.client.fairness_ratio
         )
 
         # 更新客户端的相关指标

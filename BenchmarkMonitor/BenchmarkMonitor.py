@@ -98,7 +98,7 @@ class ExperimentMonitor:
             except asyncio.TimeoutError:
                 self.logger.warning("Timeout while waiting for result.")
         else:
-            self.logger.info(f'Queue is empty, waiting... (current results: {len(self.tmp_results)})')
+            self.logger.info(f'Queue is empty, waiting... (current client results: {len(self.tmp_results)})')
 
     async def _process_complete_round(self):
         """处理完整一轮的结果"""
@@ -110,12 +110,12 @@ class ExperimentMonitor:
 
         # 根据配置决定是否进行公平性调整
         if self.config["whether_fairness"]:
-            await self._adjust_fairness()
+            exchange_count = await self._adjust_fairness()
         else:
             self.logger.info("Skipping fairness adjustment (disabled in config)")
 
         # 保存结果
-        self._save_results(f_result, s_result)
+        self._save_results(f_result, s_result, exchange_count)
 
         # 重置客户端
         await self._reset_clients()
@@ -136,16 +136,17 @@ class ExperimentMonitor:
         adjust_function = self.fairness_strategies.get(self.exp_type)
         
         if adjust_function:
-            await adjust_function(self.clients, self.exp_type)
+            exchange_count = await adjust_function(self.clients, self.exp_type)
         else:
             self.logger.warning(f"Invalid experiment type: {self.exp_type}, skipping fairness")
         
         self.logger.info("Fairness adjustment complete")
+        return exchange_count
 
-    def _save_results(self, f_result, s_result):
+    def _save_results(self, f_result, s_result, exchange_count):
         """保存结果到文件"""
         results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
-        save_results(f_result, s_result, results_file)
+        save_results(exchange_count, f_result, s_result, results_file)
         self.fairness_results.append((f_result, s_result))
         self.logger.info(f'Results saved to {results_file}')
 

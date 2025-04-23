@@ -1,9 +1,15 @@
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import asyncio
 import json
 import os
 import re
 import traceback
 import random
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from datasets import load_dataset
 from transformers import AutoTokenizer
@@ -37,9 +43,7 @@ class QAJsonFormatter:
             }
         }
 
-    async def format_qa_json(self, tokenizer, dataset2prompt,
-                             maxlen, jsonl_files, dataset_path: str,
-                             num_request: int,
+    async def format_qa_json(self, tokenizer, dataset2prompt, maxlen, jsonl_files, dataset_path: str, num_request: int,
                              client_type: str):
         prompts = []
         """Format the entire QA JSON data."""
@@ -106,7 +110,8 @@ class QAJsonFormatter:
         sampled_prompts = [prompts[idx] for idx in sampled_ids]
         return sampled_prompts
 
-async def prepare_benchmark_data(client_type):
+
+async def prepare_benchmark_data(client_type, exp_type, tokenizer, max_request_number):
     """Prepare and format data for benchmarking"""
     # Load dataset configuration
     dataset2prompt = json.load(open("config/dataset2prompt.json", "r"))
@@ -116,14 +121,11 @@ async def prepare_benchmark_data(client_type):
 
     # Initialize tokenizer
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    tokenizer = AutoTokenizer.from_pretrained(
-        '/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659',
-        trust_remote_code=True)
 
     # Format and filter data
     try:
         formatter = QAJsonFormatter()
-        max_samples = 500000 if client_type == 'long' else 100000
+        max_samples = max(max_request_number, 10000)
         formatted_json = await formatter.format_qa_json(
             tokenizer, dataset2prompt, 5000, jsonl_files, data_path, max_samples, client_type)
 
@@ -142,6 +144,7 @@ async def prepare_benchmark_data(client_type):
         print("详细错误信息:")
         print(traceback.format_exc())
         return None
+
 
 def open_jsonl_file(client_type, datasets):
     if client_type == "short":
@@ -181,3 +184,66 @@ def open_jsonl_file(client_type, datasets):
         timedata[i] = int(timedata[i] - timedata[i - 1])
 
     return timedata, dataset_path, filtered_files if filtered_files else None
+
+
+@lru_cache(maxsize=1024)
+def _cached_encode(text, prefix_len, tokenizer):
+    """缓存编码结果以避免重复计算"""
+    # 只取前缀部分进行编码，避免处理整个长文本
+    prefix = text[:prefix_len * 4]  # 估算每个token约4个字符
+    return tuple(tokenizer.encode(prefix, add_special_tokens=False)[:prefix_len])
+
+
+def _get_prefix_key(item, prefix_len, tokenizer):
+    """获取排序键"""
+    return _cached_encode(item, prefix_len, tokenizer)
+
+
+def make_prefix_list(data, tokenizer, prefix_len=50, parallel=True):
+    """
+    对数据列表按token前缀进行排序
+    
+    Args:
+        data: 要排序的数据列表
+        tokenizer: 分词器
+        prefix_len: 用于排序的前缀长度
+        parallel: 是否使用并行处理
+    
+    Returns:
+        排序后的列表
+    """
+    if not data:
+        return data
+
+    if parallel and len(data) > 1000:  # 只在数据量较大时使用并行
+        # 使用线程池并行处理
+        with ThreadPoolExecutor(max_workers=min(32, len(data) // 100)) as executor:
+            # 创建(item, key)对的列表
+            items_with_keys = list(executor.map(
+                lambda x: (x, _get_prefix_key(x, prefix_len, tokenizer)),
+                data
+            ))
+
+        # 按key排序后提取item
+        return [item for item, _ in sorted(items_with_keys, key=lambda x: x[1])]
+    else:
+        # 数据量小时直接排序
+        return sorted(data, key=lambda x: _get_prefix_key(x, prefix_len, tokenizer))
+
+
+if __name__ == "__main__":
+    # Create prompt_hub directory if it doesn't exist
+    if not os.path.exists('prompt_hub'):
+        os.makedirs('prompt_hub')
+
+    # Save short context prompts
+    short_prompts_path = 'prompt_hub/short_prompts.json'
+    short_formatted_json, _ = asyncio.run(prepare_benchmark_data('short', "LFS"))
+    with open(short_prompts_path, 'w', encoding='utf-8') as f:
+        json.dump(short_formatted_json, f, indent=2, ensure_ascii=False)
+
+    # Save long context prompts
+    long_prompts_path = 'prompt_hub/long_prompts.json'
+    long_formatted_json, _ = asyncio.run(prepare_benchmark_data('long', "LFS"))
+    with open(long_prompts_path, 'w', encoding='utf-8') as f:
+        json.dump(long_formatted_json, f, indent=2, ensure_ascii=False)

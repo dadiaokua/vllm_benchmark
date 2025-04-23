@@ -1,7 +1,9 @@
 {
-    "exp_type": "VTC",
-    "filename": "0414_17-17_to_17-36.json",
+    "exp_type": "LFS",
+    "filename": "LFS_0423_09-14_to_09-39.json",
     "concurrency": 5,
     "num_requests": 100,
-    "total_time": 1110.36
+    "total_time": 1510.51,
+    "short_client_qps_ratio": 1.1,
+    "long_client_qps_ratio": 1.0
 }
