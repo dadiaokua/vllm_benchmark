@@ -114,6 +114,7 @@ async def main():
     parser.add_argument("--vllm_url", type=str, nargs='+', required=True,
                         help="URLs of the vLLM servers (can provide multiple)",
                         default=["http://127.0.0.1"])
+    parser.add_argument("--use_tunnel", type=int, default=1)
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
     parser.add_argument("--distribution", type=str, help="Distribution of request")
     parser.add_argument("--short_qps", type=str, nargs='+', help="Qps of short client request", required=True, default=1.0)
@@ -161,7 +162,10 @@ async def main():
     print(f"Experiment Type: {args.exp}")
     print("------------------------\n")
     GLOBAL_CONFIG['round_time'] = args.round_time
-    servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
+    if args.use_tunnel:
+        servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
+    else:
+        servers = []
 
     with open(RESULTS_FILE, "w") as f:
         json.dump([], f)
@@ -172,7 +176,7 @@ async def main():
     tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results)
 
     try:
-        benchmark_timeout = GLOBAL_CONFIG['exp_time']
+        benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)
         await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
 
     except asyncio.TimeoutError:

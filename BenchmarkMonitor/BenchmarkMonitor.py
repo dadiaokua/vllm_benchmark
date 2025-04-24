@@ -112,6 +112,7 @@ class ExperimentMonitor:
         if self.config["whether_fairness"]:
             exchange_count = await self._adjust_fairness()
         else:
+            exchange_count = 0
             self.logger.info("Skipping fairness adjustment (disabled in config)")
 
         # 保存结果
@@ -138,6 +139,7 @@ class ExperimentMonitor:
         if adjust_function:
             exchange_count = await adjust_function(self.clients, self.exp_type)
         else:
+            exchange_count = 0
             self.logger.warning(f"Invalid experiment type: {self.exp_type}, skipping fairness")
         
         self.logger.info("Fairness adjustment complete")

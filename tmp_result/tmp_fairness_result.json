@@ -1,56 +1,137 @@
 [
     {
-        "f_result": 0.9990219689898149,
+        "f_result": 0.9960821634831245,
         "s_result": [
             {
-                "service": 40960,
+                "service": 33148,
                 "client": "short_0"
             },
             {
-                "service": 41725,
+                "service": 31640,
                 "client": "short_1"
             },
             {
-                "service": 39702,
+                "service": 30914,
                 "client": "short_2"
             },
             {
-                "service": 38784,
+                "service": 35301,
                 "client": "short_3"
             },
             {
-                "service": 38462,
+                "service": 29402,
                 "client": "short_4"
             }
         ],
-        "time": "2025-04-23 16:27:57",
+        "time": "2025-04-24 09:35:34",
         "exchange_count": 0
     },
     {
-        "f_result": 0.9981460039102462,
+        "f_result": 0.9966709362491698,
         "s_result": [
             {
-                "service": 41838,
+                "service": 22959,
                 "client": "short_4"
             },
             {
-                "service": 37876,
-                "client": "short_3"
-            },
-            {
-                "service": 40629,
+                "service": 25659,
                 "client": "short_2"
             },
             {
-                "service": 38127,
+                "service": 22608,
+                "client": "short_1"
+            },
+            {
+                "service": 22180,
                 "client": "short_0"
             },
             {
-                "service": 37655,
-                "client": "short_1"
+                "service": 24912,
+                "client": "short_3"
             }
         ],
-        "time": "2025-04-23 16:29:27",
+        "time": "2025-04-24 09:37:04",
+        "exchange_count": 0
+    },
+    {
+        "f_result": 0.9969473349870549,
+        "s_result": [
+            {
+                "service": 19713,
+                "client": "short_0"
+            },
+            {
+                "service": 20564,
+                "client": "short_1"
+            },
+            {
+                "service": 18416,
+                "client": "short_4"
+            },
+            {
+                "service": 19679,
+                "client": "short_3"
+            },
+            {
+                "service": 21770,
+                "client": "short_2"
+            }
+        ],
+        "time": "2025-04-24 09:38:34",
+        "exchange_count": 0
+    },
+    {
+        "f_result": 0.9966099395791771,
+        "s_result": [
+            {
+                "service": 18057,
+                "client": "short_4"
+            },
+            {
+                "service": 16176,
+                "client": "short_3"
+            },
+            {
+                "service": 15557,
+                "client": "short_0"
+            },
+            {
+                "service": 16346,
+                "client": "short_1"
+            },
+            {
+                "service": 15371,
+                "client": "short_2"
+            }
+        ],
+        "time": "2025-04-24 09:40:04",
+        "exchange_count": 0
+    },
+    {
+        "f_result": 0.9969792151931278,
+        "s_result": [
+            {
+                "service": 16630,
+                "client": "short_2"
+            },
+            {
+                "service": 16937,
+                "client": "short_0"
+            },
+            {
+                "service": 16907,
+                "client": "short_3"
+            },
+            {
+                "service": 14743,
+                "client": "short_1"
+            },
+            {
+                "service": 15322,
+                "client": "short_4"
+            }
+        ],
+        "time": "2025-04-24 09:41:34",
         "exchange_count": 0
     }
 ]

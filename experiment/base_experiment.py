@@ -48,6 +48,7 @@ class BaseExperiment:
 
         self.qps_per_worker = 0
         self.exp_type = ''
+        self.drift_time = 0
 
         # 实验结果
         self.results = []
@@ -60,18 +61,8 @@ class BaseExperiment:
         """设置实验，进行必要的准备工作"""
         assert self.openAI_client is not None, "OpenAI Client must not be None"
 
-        # 计算每个工作线程的 QPS
-        self.qps_per_worker = round(self.qps / self.concurrency)
-
-        # 如果 QPS 小于并发数，调整并发数
-        if self.qps < self.concurrency:
-            print(
-                f"[Client {self.client_id}] QPS ({self.qps}) < concurrency ({self.concurrency}), adjusting concurrency to 1")
-            self.qps_per_worker = self.qps
-            self.concurrency = 1
-
         print(
-            f"[Client {self.client_id}] Experiment setup complete: {self.concurrency} workers with {self.qps_per_worker} QPS per worker")
+            f"[Client {self.client_id}] Experiment setup complete: {self.qps} workers with {1} QPS per worker")
         return self
 
     async def run(self):
@@ -88,13 +79,13 @@ class BaseExperiment:
         self.start_time = time.time()
         print(
             f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")        # 创建工作线程
-        print(f"[Client {self.client_id}] Creating {self.concurrency} workers")
+        print(f"[Client {self.client_id}] Creating {self.qps} workers")
         # Split formatted_json into equal chunks based on concurrency
-        chunk_size = len(self.formatted_json) // self.concurrency
-        remaining = len(self.formatted_json) % self.concurrency
+        chunk_size = len(self.formatted_json) // int(self.qps)
+        remaining = len(self.formatted_json) % int(self.qps)
         total_size = len(self.formatted_json)
 
-        for worker_id in range(self.concurrency):
+        for worker_id in range(int(self.qps)):
             # Randomly select a starting point
             start_idx = random.randint(0, total_size - chunk_size - (1 if remaining > 0 else 0))
             end_idx = start_idx + chunk_size + (1 if remaining > 0 else 0)
@@ -120,7 +111,7 @@ class BaseExperiment:
                     self.tokenizer,
                     self.request_timeout,
                     self.round_time,
-                    self.qps_per_worker,
+                    1,
                     self.distribution,
                     worker_json,
                     self.config_round,
@@ -137,9 +128,11 @@ class BaseExperiment:
         # 等待所有工作线程完成
         print(f"[Client {self.client_id}] Waiting for all workers to complete")
         worker_results = await asyncio.gather(*workers)
+        num_requests, drift_time = zip(*worker_results)
 
         # 汇总结果
-        self.num_requests = sum(worker_results)
+        self.num_requests = sum(num_requests)
+        self.drift_time = sum(drift_time)
         print(f"[Client {self.client_id}] Total requests completed: {self.num_requests}")
 
         # 记录结束时间
@@ -166,18 +159,13 @@ class BaseExperiment:
             self.qps,
             self.output_tokens,
             self.latency_slo,
-            self.client.fairness_ratio
+            self.client.fairness_ratio,
+            self.drift_time
         )
 
         # 更新客户端的相关指标
         self.client.avg_latency_div_standard_latency = self.metrics['avg_latency_div_standard_latency']
         self.client.slo_violation_count = self.metrics['slo_violation_count']
-
-        print(
-            f"[Client {self.client_id}] Benchmark complete. "
-            f"Avg latency ratio: {self.client.avg_latency_div_standard_latency:.2f}, "
-            f"SLO violations: {self.client.slo_violation_count}"
-        )
 
         return self.metrics
 

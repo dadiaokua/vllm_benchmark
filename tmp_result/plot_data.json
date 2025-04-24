@@ -1,9 +1,9 @@
 {
     "exp_type": "LFS",
-    "filename": "LFS_0423_09-14_to_09-39.json",
+    "filename": "LFS_0424_09-34_to_09-41.json",
     "concurrency": 5,
     "num_requests": 100,
-    "total_time": 1510.51,
-    "short_client_qps_ratio": 1.1,
+    "total_time": 451.02,
+    "short_client_qps_ratio": 1.0,
     "long_client_qps_ratio": 1.0
 }

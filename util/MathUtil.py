@@ -48,7 +48,8 @@ def calculate_Jains_index(clients, exp_type):
     try:
         # Define the log directory and file path
         LOG_DIR = "tmp_result"
-        LOG_FILE = os.path.join(LOG_DIR, f"{exp_type}_jains_index_calculation_log_{GLOBAL_CONFIG['monitor_file_time']}.txt")
+        LOG_FILE = os.path.join(LOG_DIR,
+                                f"{exp_type}_jains_index_calculation_log_{GLOBAL_CONFIG['monitor_file_time']}.txt")
 
         # Ensure the log directory exists
         os.makedirs(LOG_DIR, exist_ok=True)
@@ -140,7 +141,7 @@ async def is_fairness_VTC(clients, exp_type):
         client1, client2 = selectClients_VTC(clients)
         if client1 is not None and client2 is not None:
             exchange_resources(client1, client2, clients, exp_type)
-            count +=1
+            count += 1
         else:
             break
         iteration += 1
@@ -168,6 +169,7 @@ async def is_fairness_DLPM(clients, exp_type):
 
     return count
 
+
 def calculate_percentile(values, percentile, reverse=False):
     """Calculate percentile value from a list"""
     if not values:
@@ -177,7 +179,7 @@ def calculate_percentile(values, percentile, reverse=False):
 
 
 def calculate_metrics(concurrency, request_timeout, client_id, results, start_time, end_time, num_requests, qps,
-                      output_tokens, latency_slo, fairness_ratio):
+                      output_tokens, latency_slo, fairness_ratio, drift_time):
     # Calculate metrics
     total_elapsed_time = end_time - start_time
     total_tokens = sum(tokens for tokens, _, _, _, _, _ in results if tokens is not None)
@@ -202,6 +204,7 @@ def calculate_metrics(concurrency, request_timeout, client_id, results, start_ti
     ttft_percentiles = [calculate_percentile(ttft_list, p) for p in percentiles]
 
     return {
+        "drift_time": drift_time,
         "latency_slo": latency_slo,
         "slo_violation_count": slo_violation_count,
         "avg_latency_div_standard_latency": avg_latency_div_standard_latency,

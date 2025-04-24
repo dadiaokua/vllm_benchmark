@@ -2,7 +2,7 @@ from datetime import datetime
 
 GLOBAL_CONFIG = {
     "output_tokens": 200,
-    "alpha": 0.5,
+    "alpha": 0.7,
     "fairness_ratio_LFS": 0.15,
     "fairness_ratio_VTC": 0.5,
     'ADJUST_SENSITIVITY': 1,

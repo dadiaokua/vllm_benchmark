@@ -183,8 +183,13 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
                        warm_colors, cool_colors, "requests_per_second",
                        "Requests per Second", legend_handles, legend_labels)
 
-    times = [q for q in qps_with_time]
-
+    # 提取 f_result 值
+    f_values = [result['f_result'] for result in fairness_results]
+    times = list(range(len(f_values)))  # 使用 f_values 的长度来生成时间点
+    
+    print(f"Debug - times length: {len(times)}, content: {times}")
+    print(f"Debug - f_values length: {len(f_values)}, content: {f_values}")
+    
     # 6. Fairness Ratio
     plot_client_metric(axs[5], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "fairness_ratio",
@@ -204,7 +209,13 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
                        "Slo Violation Request Numbers", legend_handles, legend_labels)
 
     # 8. Jain's公平性指数放在最后
-    plot_fairness_index(axs[9], fairness_results, times)
+    if len(times) == len(f_values):  # 添加长度检查
+        plot_fairness_index(axs[9], f_values, times)
+    else:
+        print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
+        # 可以选择使用较短的长度
+        min_len = min(len(times), len(f_values))
+        plot_fairness_index(axs[9], f_values[:min_len], times[:min_len])
 
     # 在图形底部添加共享图例
     fig.legend(handles=legend_handles, labels=legend_labels,
