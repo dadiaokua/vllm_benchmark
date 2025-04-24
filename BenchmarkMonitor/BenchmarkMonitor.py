@@ -1,5 +1,6 @@
 import asyncio
 import json
+import subprocess
 from datetime import datetime, timedelta
 
 from config.Config import GLOBAL_CONFIG
@@ -80,6 +81,32 @@ class ExperimentMonitor:
 
         self.logger.info(f'Experiment duration reached. Monitoring stopped.')
         return self.fairness_results
+
+    def _log_gpu_status(self):
+        """记录当前GPU利用率和显存占用"""
+        try:
+            result = subprocess.run(
+                ["nvidia-smi",
+                 "--query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True
+            )
+            output = result.stdout.strip()
+            log_lines = []
+            for line in output.split('\n'):
+                timestamp, index, util, mem_used, mem_total = [x.strip() for x in line.split(',')]
+                log_line = (f"[{timestamp}] GPU {index} | Utilization: {util}% | "
+                            f"Memory: {mem_used}/{mem_total} MiB")
+                self.logger.info(log_line)
+                log_lines.append(log_line)
+
+            # 可选：追加记录到文件
+            with open("tmp_result/gpu_monitor_log.txt", "a") as f:
+                for log in log_lines:
+                    f.write(log + "\n")
+
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch GPU status: {e}")
 
     async def _check_results(self):
         """检查结果队列并处理结果"""
