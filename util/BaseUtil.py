@@ -9,9 +9,17 @@ from util.FileSaveUtil import save_exchange_record
 def initialize_clients(local_port):
     """Initialize OpenAI clients based on port configuration"""
     if isinstance(local_port, list):
-        return [AsyncOpenAI(base_url=f"http://localhost:{port}/v1") for port in local_port]
+        print(f"Initializing multiple OpenAI clients:")
+        clients = []
+        for port in local_port:
+            url = f"http://localhost:{port}/v1"
+            print(f"Creating client with base_url: {url}")
+            clients.append(AsyncOpenAI(base_url=url))
+        return clients
     else:
-        return [AsyncOpenAI(base_url=f"http://localhost:{local_port}/v1")]
+        url = f"http://localhost:{local_port}/v1"
+        print(f"Initializing single OpenAI client with base_url: {url}")
+        return [AsyncOpenAI(base_url=url)]
 
 
 def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, clients, exp_type):
