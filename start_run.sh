@@ -19,4 +19,5 @@ python3 run_benchmarks.py \
   --use_time_data 0 \
   --round 5 \
   --round_time 60 \
-  --exp LFS
+  --exp LFS \
+  --tokenizer /home/hjh/Model_Hub/models--deepseek-ai--DeepSeek-R1-Distill-Qwen-14B/snapshots/5ee96d8a09692e87087a6e0496d87124a1cdc3fe

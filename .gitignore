@@ -7,4 +7,3 @@ vLLM_performance-venv/
 tmp_*/
 results/*
 figure/*
-prompt_hub/
