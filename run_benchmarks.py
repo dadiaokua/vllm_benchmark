@@ -20,9 +20,7 @@ async def setup_benchmark_tasks(args, all_results):
     tasks = []
     clients = []
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        '/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659',
-        trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
 
     # short_formatted_json, time_data = await prepare_benchmark_data('short', args.exp, tokenizer, max_request_number)
     # long_formatted_json, time_data = await prepare_benchmark_data('long', args.exp, tokenizer, max_request_number)
@@ -137,6 +135,7 @@ async def main():
     parser.add_argument("--round_time", type=int, default=600, help="Timeout for every round (default: 600)",
                         required=True)
     parser.add_argument("--exp", type=str, help="Experiment type", required=True, default="LFS")
+    parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659")
 
     args = parser.parse_args()
 
@@ -160,6 +159,7 @@ async def main():
     print(f"Round: {args.round}")
     print(f"Round Time: {args.round_time} seconds")
     print(f"Experiment Type: {args.exp}")
+    print(f"Tokenizer Local Path: {args.tokenizer}")
     print("------------------------\n")
     GLOBAL_CONFIG['round_time'] = args.round_time
     if args.use_tunnel:
