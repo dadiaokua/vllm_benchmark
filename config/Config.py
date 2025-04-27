@@ -1,7 +1,7 @@
 from datetime import datetime
 
 GLOBAL_CONFIG = {
-    "output_tokens": 200,
+    "output_tokens": 256,
     "alpha": 0.7,
     "fairness_ratio_LFS": 0.15,
     "fairness_ratio_VTC": 0.5,
@@ -13,5 +13,6 @@ GLOBAL_CONFIG = {
     "monitor_file_time": datetime.now().strftime("%m_%d_%H_%M"),
     "exp_time": 3600 * 2,
     "avg_success_rate": 0.9,
-    "max_exchange_times": 3
+    "max_exchange_times": 3,
+    "prompt_max_len": 256,
 }

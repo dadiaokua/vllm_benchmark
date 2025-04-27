@@ -22,8 +22,8 @@ async def setup_benchmark_tasks(args, all_results):
 
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
 
-    # short_formatted_json, time_data = await prepare_benchmark_data('short', args.exp, tokenizer, max_request_number)
-    # long_formatted_json, time_data = await prepare_benchmark_data('long', args.exp, tokenizer, max_request_number)
+    # short_formatted_json, time_data = await prepare_benchmark_data('short', tokenizer)
+    # long_formatted_json, time_data = await prepare_benchmark_data('long', tokenizer)
 
     with open("prompt_hub/short_prompts.json", "r", encoding="utf-8") as f:
         short_formatted_json = json.load(f)

@@ -80,7 +80,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         drift_time += drift
 
         # 限制打印频率，只在drift较大或每N个请求时打印
-        if drift > 1 or request_count % 10 == 0:
+        if drift > 1:
             print(
                 f"Client {client_index}, Worker {worker_id}, Round {config_round + 1} "
                 f"Task {request_count}: Drift={drift:.3f}s, QPS={rate_lambda}"

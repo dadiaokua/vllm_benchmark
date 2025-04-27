@@ -1,4 +1,7 @@
 import os
+
+from config.Config import GLOBAL_CONFIG
+
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import asyncio
@@ -64,7 +67,7 @@ class QAJsonFormatter:
                         print(f"文件 {jsonl_file} 为空")
                         continue
 
-                    if client_type == "long":
+                    if client_type == "longg":
                         prompt = prompt_format.format(**data)
                         tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
                         if len(tokenized_prompt) > maxlen:
@@ -72,15 +75,22 @@ class QAJsonFormatter:
                             prompt = tokenizer.decode(tokenized_prompt[:half],
                                                       skip_special_tokens=True) + tokenizer.decode(
                                 tokenized_prompt[-half:], skip_special_tokens=True)
+                    elif client_type == "long":
+                        if len(data["conversations"]) >= 2:
+                            prompt = data["conversations"][0]["value"]
+                        tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
+                        if len(tokenized_prompt) > (maxlen):
+                            continue
                     else:
                         if len(data["conversations"]) >= 2:
                             prompt = data["conversations"][0]["value"]
                         tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
-                        if len(tokenized_prompt) > (maxlen / 10):
-                            half = int(maxlen / 20)
-                            prompt = tokenizer.decode(tokenized_prompt[:half],
-                                                      skip_special_tokens=True) + tokenizer.decode(
-                                tokenized_prompt[-half:], skip_special_tokens=True)
+                        if len(tokenized_prompt) > (maxlen / 4):
+                            # half = int(maxlen / 2)
+                            # prompt = tokenizer.decode(tokenized_prompt[:half],
+                            #                           skip_special_tokens=True) + tokenizer.decode(
+                            #     tokenized_prompt[-half:], skip_special_tokens=True)
+                            continue
 
                     file_prompts.append(prompt)
                     if len(file_prompts) > num_request / len(jsonl_files):
@@ -111,10 +121,10 @@ class QAJsonFormatter:
         return sampled_prompts
 
 
-async def prepare_benchmark_data(client_type, exp_type, tokenizer, max_request_number):
+async def prepare_benchmark_data(client_type, tokenizer):
     """Prepare and format data for benchmarking"""
     # Load dataset configuration
-    dataset2prompt = json.load(open("config/dataset2prompt.json", "r"))
+    dataset2prompt = json.load(open("../config/dataset2prompt.json", "r"))
 
     # Get data files
     time_data, data_path, jsonl_files = open_jsonl_file(client_type, dataset2prompt)
@@ -125,9 +135,10 @@ async def prepare_benchmark_data(client_type, exp_type, tokenizer, max_request_n
     # Format and filter data
     try:
         formatter = QAJsonFormatter()
-        max_samples = max(max_request_number, 10000)
+        max_samples = 1000
         formatted_json = await formatter.format_qa_json(
-            tokenizer, dataset2prompt, 5000, jsonl_files, data_path, max_samples, client_type)
+            tokenizer, dataset2prompt, GLOBAL_CONFIG.get('prompt_max_len', 256), jsonl_files, data_path, max_samples,
+            client_type)
 
         # Filter by length
         filtered_json = []
@@ -147,8 +158,8 @@ async def prepare_benchmark_data(client_type, exp_type, tokenizer, max_request_n
 
 
 def open_jsonl_file(client_type, datasets):
-    if client_type == "short":
-        dataset_path = "sharegpt_gpt4/"
+    if client_type == "short" or client_type == "long":
+        dataset_path = "../sharegpt_gpt4/"
     else:
         dataset_path = "longbench/"
 
@@ -173,18 +184,73 @@ def open_jsonl_file(client_type, datasets):
         # else:
         #     print(f"警告: {jsonl_file} 不在预定义的datasets中")
 
-    timedata = load_dataset(
-        "/Users/myrick/dataset_hub/datasets--lmsys--chatbot_arena_conversations/snapshots/1b6335d42a1d2c7e34870c905d03ab964f7f2bd8/data/").data[
-        'train']['tstamp'].to_pylist()
+    return load_time_data(), dataset_path, filtered_files if filtered_files else None
 
-    for i in reversed(range(len(timedata))):
-        if i == 0:
-            timedata[i] = 0
-            break
-        timedata[i] = int(timedata[i] - timedata[i - 1])
+def validate_timestamps(timestamps):
+    """验证时间戳数据的有效性"""
+    if not timestamps:
+        raise ValueError("Empty timestamp list")
 
-    return timedata, dataset_path, filtered_files if filtered_files else None
+    # 确保时间戳是单调递增的
+    for i in range(1, len(timestamps)):
+        if timestamps[i] < timestamps[i - 1]:
+            raise ValueError(f"Non-monotonic timestamps at index {i}")
 
+    # 检查异常大的时间间隔
+    max_reasonable_interval = 3600  # 假设正常间隔不超过1小时
+    for i in range(1, len(timestamps)):
+        interval = timestamps[i] - timestamps[i - 1]
+        if interval > max_reasonable_interval:
+            print(f"Warning: Large time interval ({interval}s) detected at index {i}")
+
+def load_time_data(target_qps=None):
+    """加载并处理时间数据
+
+    Args:
+        target_qps: 可选的目标QPS，用于规范化时间间隔
+    """
+    try:
+        timedata = load_dataset(
+            "/Users/myrick/dataset_hub/datasets--lmsys--chatbot_arena_conversations/snapshots/1b6335d42a1d2c7e34870c905d03ab964f7f2bd8/data/"
+        ).data['train']['tstamp'].to_pylist()
+
+        return process_timestamps(timedata, target_qps)
+
+    except Exception as e:
+        print(f"Error loading time data: {e}")
+        return [1.0]  # 返回默认间隔
+
+
+def process_timestamps(timestamps, target_qps=1):
+    """处理时间戳数据，计算并可选地规范化时间间隔
+
+    Args:
+        timestamps: 原始时间戳列表
+        target_qps: 目标QPS，如果提供则将间隔调整为匹配该QPS
+    """
+    try:
+        validate_timestamps(timestamps)
+
+        # 计算时间间隔
+        intervals = [0.0]  # 第一个间隔为0
+        for i in range(1, len(timestamps)):
+            interval = float(timestamps[i] - timestamps[i - 1])
+            intervals.append(interval)
+
+        # 如果指定了目标QPS，调整间隔
+        if target_qps is not None and target_qps > 0:
+            target_interval = 1.0 / target_qps
+            adjusted_intervals = [
+                min(interval, target_interval * 2)  # 限制最大间隔
+                for interval in intervals
+            ]
+            return adjusted_intervals
+
+        return intervals
+
+    except Exception as e:
+        print(f"Error processing timestamps: {e}")
+        return [1.0]  # 返回默认间隔
 
 @lru_cache(maxsize=1024)
 def _cached_encode(text, prefix_len, tokenizer):
@@ -236,14 +302,20 @@ if __name__ == "__main__":
     if not os.path.exists('prompt_hub'):
         os.makedirs('prompt_hub')
 
+    tokenizer = AutoTokenizer.from_pretrained(
+        "/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659",
+        trust_remote_code=True)
+
     # Save short context prompts
-    short_prompts_path = 'prompt_hub/short_prompts.json'
-    short_formatted_json, _ = asyncio.run(prepare_benchmark_data('short', "LFS"))
+    short_prompts_path = '../prompt_hub/short_prompts.json'
+    short_formatted_json, prompt_time_data = asyncio.run(prepare_benchmark_data('short', tokenizer))
     with open(short_prompts_path, 'w', encoding='utf-8') as f:
         json.dump(short_formatted_json, f, indent=2, ensure_ascii=False)
+        print(f"Short prompts saved to {short_prompts_path}")
 
     # Save long context prompts
-    long_prompts_path = 'prompt_hub/long_prompts.json'
-    long_formatted_json, _ = asyncio.run(prepare_benchmark_data('long', "LFS"))
+    long_prompts_path = '../prompt_hub/long_prompts.json'
+    long_formatted_json, _ = asyncio.run(prepare_benchmark_data('long', tokenizer))
     with open(long_prompts_path, 'w', encoding='utf-8') as f:
         json.dump(long_formatted_json, f, indent=2, ensure_ascii=False)
+        print(f"Long prompts saved to {long_prompts_path}")
