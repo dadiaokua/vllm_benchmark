@@ -14,12 +14,12 @@ def initialize_clients(local_port):
         for port in local_port:
             url = f"http://localhost:{port}/v1"
             print(f"Creating client with base_url: {url}")
-            clients.append(AsyncOpenAI(base_url=url))
+            clients.append(AsyncOpenAI(base_url=url, api_key="empty"))
         return clients
     else:
         url = f"http://localhost:{local_port}/v1"
         print(f"Initializing single OpenAI client with base_url: {url}")
-        return [AsyncOpenAI(base_url=url)]
+        return [AsyncOpenAI(base_url=url, api_key="empty")]
 
 
 def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, clients, exp_type):

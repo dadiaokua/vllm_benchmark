@@ -233,7 +233,7 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
         os.makedirs('figure')
 
     # 保存图表
-    fig.savefig(f'figure/comprehensive_results{filename.split('.')[0]}.png', dpi=300, bbox_inches='tight')
+    fig.savefig(f'figure/comprehensive_results{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
 
     plt.show()
 
