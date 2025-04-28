@@ -215,7 +215,7 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
         print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
         # 可以选择使用较短的长度
         min_len = min(len(times), len(f_values))
-        plot_fairness_index(axs[9], f_values[1:min_len + 1], times[:min_len])
+        plot_fairness_index(axs[9], f_values[:min_len], times[:min_len])
 
     # 在图形底部添加共享图例
     fig.legend(handles=legend_handles, labels=legend_labels,

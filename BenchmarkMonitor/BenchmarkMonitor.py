@@ -77,6 +77,7 @@ class ExperimentMonitor:
 
         while datetime.now() - self.start_time < exp_duration:
             await self._check_results()
+            self._log_gpu_status()
             await asyncio.sleep(5)  # 每5秒检查一次
 
         self.logger.info(f'Experiment duration reached. Monitoring stopped.')

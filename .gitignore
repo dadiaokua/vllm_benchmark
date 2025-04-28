@@ -4,6 +4,6 @@ benchmark_results.json
 sharegpt_*/
 longbench/
 vLLM_performance-venv/
-tmp_*/
+tmp_*/*
 results/*
 figure/*
