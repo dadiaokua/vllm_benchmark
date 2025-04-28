@@ -19,7 +19,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
 
     # 添加标题显示参数
     fig2.suptitle(
-        f"{exp_type} Averaged Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+        f"{exp_type} Averaged Benchmark Results - Short Client: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
         fontsize=16, y=0.98)
 
     # 合并所有结果
@@ -113,8 +113,8 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     fig2.subplots_adjust(top=0.92, bottom=0.1)
 
     # 创建 figure 文件夹（如果不存在）
-    if not os.path.exists('../figure'):
-        os.makedirs('../figure')
+    if not os.path.exists('figure'):
+        os.makedirs('figure')
 
     # 保存图片
     fig2.savefig('figure/averaged_results' + filename.split('.')[0] + '.png', dpi=300, bbox_inches='tight')
@@ -186,10 +186,10 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     # 提取 f_result 值
     f_values = [result['f_result'] for result in fairness_results]
     times = list(range(len(f_values)))  # 使用 f_values 的长度来生成时间点
-    
+
     print(f"Debug - times length: {len(times)}, content: {times}")
     print(f"Debug - f_values length: {len(f_values)}, content: {f_values}")
-    
+
     # 6. Fairness Ratio
     plot_client_metric(axs[5], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "fairness_ratio",
@@ -215,7 +215,7 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
         print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
         # 可以选择使用较短的长度
         min_len = min(len(times), len(f_values))
-        plot_fairness_index(axs[9], f_values[:min_len], times[:min_len])
+        plot_fairness_index(axs[9], f_values[1:min_len + 1], times[:min_len])
 
     # 在图形底部添加共享图例
     fig.legend(handles=legend_handles, labels=legend_labels,
@@ -345,8 +345,8 @@ def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm
     setup_subplot_client(ax, title, time_xLabel, ylim=computed_ylim)
 
 
-def plot_result(exp_type, filename, args_concurrency, total_time):
-    with open("results/" + filename, 'r') as f:
+def plot_result(plot_data):
+    with open("results/" + plot_data["filename"], 'r') as f:
         all_results = json.load(f)
 
     # Load fairness results and create third figure
@@ -371,9 +371,11 @@ def plot_result(exp_type, filename, args_concurrency, total_time):
         # Combine sorted results with short first, then long
         sorted_all_results = short_results + long_results
 
-        qps_with_time = plot_averaged_results(short_results, long_results, args_concurrency, total_time, filename,
-                                              exp_type)
-        plot_comprehensive_results(sorted_all_results, args_concurrency, total_time, filename, exp_type,
+        qps_with_time = plot_averaged_results(short_results, long_results, plot_data["concurrency"],
+                                              plot_data["total_time"], plot_data["filename"],
+                                              plot_data["exp"])
+        plot_comprehensive_results(sorted_all_results, plot_data["concurrency"], plot_data["total_time"],
+                                   plot_data["filename"], plot_data["exp"],
                                    fairness_results, qps_with_time)
     else:
         print("No results found")
@@ -384,4 +386,4 @@ if __name__ == "__main__":
     with open("tmp_result/plot_data.json", "r") as f:
         data = json.load(f)
 
-    plot_result(data["exp_type"], data["filename"], data["concurrency"], data["total_time"])
+    plot_result(data)

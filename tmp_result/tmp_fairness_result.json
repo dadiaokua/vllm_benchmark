@@ -1,137 +1,277 @@
 [
     {
-        "f_result": 0.9995129024104681,
+        "f_result": 0.9997297525823998,
         "s_result": [
             {
-                "service": 25527,
+                "service": 20849,
                 "client": "short_0"
             },
             {
-                "service": 24521,
+                "service": 20525,
                 "client": "short_1"
             },
             {
-                "service": 25972,
+                "service": 19903,
                 "client": "short_2"
             },
             {
-                "service": 25975,
+                "service": 20565,
                 "client": "short_3"
             },
             {
-                "service": 25044,
+                "service": 20674,
                 "client": "short_4"
+            },
+            {
+                "service": 20519,
+                "client": "short_5"
+            },
+            {
+                "service": 20561,
+                "client": "short_6"
+            },
+            {
+                "service": 20822,
+                "client": "short_7"
+            },
+            {
+                "service": 20777,
+                "client": "short_8"
+            },
+            {
+                "service": 21153,
+                "client": "short_9"
+            },
+            {
+                "service": 21304,
+                "client": "short_10"
+            },
+            {
+                "service": 20910,
+                "client": "short_11"
             }
         ],
-        "time": "2025-04-25 16:34:21",
+        "time": "2025-04-28 10:55:48",
         "exchange_count": 0
     },
     {
-        "f_result": 0.9998112317426466,
+        "f_result": 0.9997514620829893,
         "s_result": [
             {
-                "service": 21095,
-                "client": "short_1"
-            },
-            {
-                "service": 21320,
-                "client": "short_4"
-            },
-            {
-                "service": 20807,
-                "client": "short_0"
-            },
-            {
-                "service": 20749,
+                "service": 21122,
                 "client": "short_2"
             },
             {
-                "service": 20492,
+                "service": 20882,
+                "client": "short_5"
+            },
+            {
+                "service": 21457,
+                "client": "short_1"
+            },
+            {
+                "service": 21507,
+                "client": "short_6"
+            },
+            {
+                "service": 21226,
                 "client": "short_3"
+            },
+            {
+                "service": 21003,
+                "client": "short_4"
+            },
+            {
+                "service": 20835,
+                "client": "short_8"
+            },
+            {
+                "service": 20479,
+                "client": "short_7"
+            },
+            {
+                "service": 21152,
+                "client": "short_0"
+            },
+            {
+                "service": 21689,
+                "client": "short_11"
+            },
+            {
+                "service": 21505,
+                "client": "short_9"
+            },
+            {
+                "service": 20934,
+                "client": "short_10"
             }
         ],
-        "time": "2025-04-25 16:35:51",
+        "time": "2025-04-28 10:57:53",
         "exchange_count": 0
     },
     {
-        "f_result": 0.9995686997432924,
+        "f_result": 0.9995533965795023,
         "s_result": [
             {
-                "service": 16482,
-                "client": "short_3"
+                "service": 20522,
+                "client": "short_7"
             },
             {
-                "service": 16959,
+                "service": 20905,
+                "client": "short_8"
+            },
+            {
+                "service": 20980,
+                "client": "short_5"
+            },
+            {
+                "service": 19781,
+                "client": "short_10"
+            },
+            {
+                "service": 21551,
+                "client": "short_4"
+            },
+            {
+                "service": 21346,
                 "client": "short_2"
             },
             {
-                "service": 17312,
+                "service": 20902,
                 "client": "short_0"
             },
             {
-                "service": 17266,
+                "service": 21113,
+                "client": "short_3"
+            },
+            {
+                "service": 20923,
                 "client": "short_1"
             },
             {
-                "service": 17496,
-                "client": "short_4"
+                "service": 21162,
+                "client": "short_9"
+            },
+            {
+                "service": 21293,
+                "client": "short_6"
+            },
+            {
+                "service": 21278,
+                "client": "short_11"
             }
         ],
-        "time": "2025-04-25 16:37:21",
+        "time": "2025-04-28 10:59:58",
         "exchange_count": 0
     },
     {
-        "f_result": 0.999282621465699,
+        "f_result": 0.9995281445387739,
         "s_result": [
             {
-                "service": 14374,
-                "client": "short_3"
+                "service": 21037,
+                "client": "short_10"
             },
             {
-                "service": 14811,
-                "client": "short_2"
+                "service": 19599,
+                "client": "short_7"
             },
             {
-                "service": 14207,
-                "client": "short_1"
-            },
-            {
-                "service": 13654,
+                "service": 21019,
                 "client": "short_0"
             },
             {
-                "service": 13648,
+                "service": 21297,
+                "client": "short_8"
+            },
+            {
+                "service": 21044,
+                "client": "short_1"
+            },
+            {
+                "service": 20737,
+                "client": "short_5"
+            },
+            {
+                "service": 20501,
+                "client": "short_3"
+            },
+            {
+                "service": 20644,
+                "client": "short_9"
+            },
+            {
+                "service": 20301,
+                "client": "short_11"
+            },
+            {
+                "service": 20228,
+                "client": "short_6"
+            },
+            {
+                "service": 20386,
+                "client": "short_2"
+            },
+            {
+                "service": 20381,
                 "client": "short_4"
             }
         ],
-        "time": "2025-04-25 16:38:51",
+        "time": "2025-04-28 11:02:03",
         "exchange_count": 0
     },
     {
-        "f_result": 0.9990976607484245,
+        "f_result": 0.9994431935913844,
         "s_result": [
             {
-                "service": 12748,
-                "client": "short_0"
+                "service": 21760,
+                "client": "short_7"
             },
             {
-                "service": 13765,
+                "service": 20860,
+                "client": "short_6"
+            },
+            {
+                "service": 21555,
+                "client": "short_11"
+            },
+            {
+                "service": 21789,
                 "client": "short_4"
             },
             {
-                "service": 13813,
-                "client": "short_1"
+                "service": 20879,
+                "client": "short_2"
             },
             {
-                "service": 13403,
+                "service": 21002,
                 "client": "short_3"
             },
             {
-                "service": 13506,
-                "client": "short_2"
+                "service": 20955,
+                "client": "short_9"
+            },
+            {
+                "service": 20191,
+                "client": "short_5"
+            },
+            {
+                "service": 21687,
+                "client": "short_0"
+            },
+            {
+                "service": 21791,
+                "client": "short_10"
+            },
+            {
+                "service": 21774,
+                "client": "short_1"
+            },
+            {
+                "service": 21625,
+                "client": "short_8"
             }
         ],
-        "time": "2025-04-25 16:40:21",
+        "time": "2025-04-28 11:04:08",
         "exchange_count": 0
     }
 ]

@@ -216,15 +216,14 @@ async def main():
     )
     filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
 
+    # 将args转为dict
+    args_dict = vars(args)
+
     plot_data = {
-        "exp_type": args.exp,
         "filename": filename,
-        "concurrency": args.concurrency,
-        "num_requests": args.num_requests,
         "total_time": round(total_time, 2),
-        "short_client_qps_ratio": args.short_client_qps_ratio,
-        "long_client_qps_ratio": args.long_client_qps_ratio
     }
+    plot_data.update(args_dict)  # 直接合并所有参数到plot_data
 
     save_benchmark_results(filename, benchmark_results, plot_data)
 
@@ -237,7 +236,7 @@ async def main():
     except asyncio.CancelledError:
         print("Monitor task cancelled.")
 
-    plot_result(args.exp, filename, args.concurrency, round(total_time, 2))
+    plot_result(plot_data)
 
 
 if __name__ == "__main__":

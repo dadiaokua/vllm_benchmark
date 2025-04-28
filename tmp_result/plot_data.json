@@ -1,9 +1,35 @@
 {
-    "exp_type": "LFS",
-    "filename": "LFS_0425_16-33_to_16-40.json",
+    "filename": "LFS_0428_10-53_to_11-04.json",
+    "total_time": 621.39,
+    "vllm_url": [
+        "http://222.201.144.119:8000/v1"
+    ],
+    "use_tunnel": 1,
+    "api_key": "http://222.201.144.120:8000/v1",
+    "distribution": "poisson",
+    "short_qps": [
+        "1"
+    ],
+    "short_client_qps_ratio": 1.0,
+    "long_qps": [
+        "50"
+    ],
+    "long_client_qps_ratio": 1.0,
     "concurrency": 5,
     "num_requests": 100,
-    "total_time": 446.45,
-    "short_client_qps_ratio": 1.0,
-    "long_client_qps_ratio": 1.0
+    "short_clients": 12,
+    "long_clients": 0,
+    "sleep": 5,
+    "local_port": [
+        8080
+    ],
+    "remote_port": [
+        10028
+    ],
+    "use_time_data": 0,
+    "request_timeout": 20,
+    "round": 5,
+    "round_time": 60,
+    "exp": "LFS",
+    "tokenizer": "/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659"
 }

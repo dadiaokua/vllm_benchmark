@@ -92,6 +92,7 @@ class BenchmarkClient:
             await self.monitor_done_event.wait()
             self.monitor_done_event.clear()
 
+            self.results[-1]["fairness_ratio"] = self.fairness_ratio
             # Give monitor time to process
             await asyncio.sleep(1)
 
