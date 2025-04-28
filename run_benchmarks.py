@@ -15,7 +15,7 @@ from util.JsonFormatterUtil import prepare_benchmark_data, make_prefix_list
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
 
 
-async def setup_benchmark_tasks(args, all_results):
+async def setup_benchmark_tasks(args, all_results, request_queue):
     """Setup and create benchmark tasks"""
     tasks = []
     clients = []
@@ -98,7 +98,7 @@ async def setup_benchmark_tasks(args, all_results):
         tasks.append(client.start())
 
     # 创建监控器实例
-    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp)
+    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp, request_queue)
 
     # 创建监控任务
     monitor_task = asyncio.create_task(monitor())
@@ -171,9 +171,10 @@ async def main():
         json.dump([], f)
 
     all_results = asyncio.Queue()
+    request_queue = asyncio.Queue()
 
     start_time = time.time()
-    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results)
+    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue)
 
     try:
         benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)

@@ -52,7 +52,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.round = round
         self.exp_type = exp_type
-        self.latency_slo = 10
+        self.latency_slo = GLOBAL_CONFIG.get("latency_slo", 5)
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1

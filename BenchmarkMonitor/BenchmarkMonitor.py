@@ -15,7 +15,7 @@ class ExperimentMonitor:
     实验监控器类，负责监控实验结果、计算公平性并触发资源调整
     """
 
-    def __init__(self, clients, result_queue, client_count, exp_type, config=None):
+    def __init__(self, clients, result_queue, client_count, exp_type, request_queue, config=None):
         """
         初始化监控器
 
@@ -28,6 +28,7 @@ class ExperimentMonitor:
         """
         self.clients = clients
         self.result_queue = result_queue
+        self.request_queue = request_queue
         self.client_count = client_count
         self.exp_type = exp_type
         self.config = config or GLOBAL_CONFIG
@@ -108,6 +109,13 @@ class ExperimentMonitor:
 
         except Exception as e:
             self.logger.warning(f"Failed to fetch GPU status: {e}")
+
+    async def _check_request_queue(self):
+        requests = []
+        while not self.request_queue.empty():
+            request = self.request_queue.get()
+            requests.append(request)
+        return requests
 
     async def _check_results(self):
         """检查结果队列并处理结果"""

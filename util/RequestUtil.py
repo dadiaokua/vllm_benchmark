@@ -60,20 +60,19 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
-    last_request_time = global_start_time
 
     while time.time() - global_start_time < round_time:
         # 计算下一个请求的目标时间
-        target_time = get_target_time(request_count, rate_lambda, global_start_time, distribution, 
-                                    use_time_data, time_data, active_ratio, round_time, time_ratio)
-        
+        target_time = get_target_time(request_count, rate_lambda, global_start_time, distribution,
+                                      use_time_data, time_data, active_ratio, round_time, time_ratio)
+
         # 计算需要等待的时间
         now = time.time()
         wait_time = max(0, target_time - now)
 
         if wait_time > 0:
             await asyncio.sleep(wait_time)
-        
+
         # 发送请求并记录时间
         actual_time = time.time()
         drift = actual_time - target_time
@@ -89,14 +88,13 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         # 发送请求
         request = sample_content[request_count % len(sample_content)]
         selected_client = selected_clients[request_count % len(selected_clients)]
-        
+
         asyncio.create_task(
             process_request(selected_client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                          results, request_count, client_index, semaphore, config_round, latency_slo)
+                            results, request_count, client_index, semaphore, config_round, latency_slo)
         )
 
         request_count += 1
-        last_request_time = actual_time
 
     return request_count, drift_time
 
@@ -127,7 +125,7 @@ def calculate_raw_request_time(request_count, rate_lambda, global_start_time, di
 
     # 基础时间间隔
     base_interval = 1 / rate_lambda
-    
+
     if distribution.lower() == "poisson":
         # 泊松分布：使用指数分布生成间隔
         interval = float(np.random.exponential(base_interval))
@@ -139,7 +137,7 @@ def calculate_raw_request_time(request_count, rate_lambda, global_start_time, di
         interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
 
     # 直接返回下一个请求的时间点
-    return global_start_time + (request_count * base_interval)
+    return global_start_time + (request_count * interval)
 
 
 def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data, active_ratio,
@@ -152,27 +150,25 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
 
     # 应用time_ratio调整整体发送时间
     time_since_start = raw_time - global_start_time
-    
+
     # 使用非线性映射来避免在窗口末尾堆积请求
     # 当time_ratio > 1时，使用一个平滑的函数来分散请求
     if time_ratio > 1 and time_since_start <= window_length:
         # 使用sigmoid类函数进行平滑映射
-        progress = time_since_start / window_length  # 0到1之间的进度
+        progress = time_since_start / window_length
         # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
-        adjusted_progress = progress ** (1/time_ratio)
+        adjusted_progress = progress ** (1 / time_ratio)
         adjusted_time_since_start = adjusted_progress * window_length
     else:
         # time_ratio <= 1的情况，直接线性缩放
         adjusted_time_since_start = time_since_start * time_ratio
-        
+
     # 确保调整后的时间不会超出原始窗口
-    if adjusted_time_since_start > window_length and time_since_start <= window_length:
+    if adjusted_time_since_start > window_length >= time_since_start:
         adjusted_time_since_start = window_length
-    
-    raw_time = global_start_time + adjusted_time_since_start
 
     # 控制发送时间段 - 更频繁的活跃/非活跃切换
-    time_since_start = raw_time - global_start_time
+    time_since_start = adjusted_time_since_start
 
     # 使用更小的窗口长度，以实现更频繁的切换
     small_window_length = min(GLOBAL_CONFIG['max_granularity'], window_length)  # 默认使用10秒的小窗口，除非原窗口更小
@@ -193,4 +189,3 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
 
         adjusted_time = raw_time + wait_time + random_offset
         return adjusted_time
-
