@@ -89,7 +89,7 @@ class ExperimentMonitor:
         try:
             result = subprocess.run(
                 ["nvidia-smi",
-                 "--query-gpu=timestamp,index,utilization.gpu,utilization.sm,memory.used,memory.total",
+                 "--query-gpu=timestamp,index,utilization.gpu,utilization.memory,clocks.sm,memory.used,memory.total",
                  "--format=csv,noheader,nounits"],
                 capture_output=True, text=True
             )
@@ -97,13 +97,14 @@ class ExperimentMonitor:
             log_lines = []
             for line in output.split('\n'):
                 parts = [x.strip() for x in line.split(',')]
-                if len(parts) != 6:
+                if len(parts) != 7:
                     self.logger.warning(f"Unexpected nvidia-smi output line: {line}")
                     continue
 
-                timestamp, index, util_gpu, util_sm, mem_used, mem_total = [x.strip() for x in line.split(',')]
+                timestamp, index, util_gpu, util_mem, sm_clock, mem_used, mem_total = parts
                 log_line = (f"[{timestamp}] GPU {index} | GPU Util: {util_gpu}% | "
-                            f"SM Util: {util_sm}% | Memory: {mem_used}/{mem_total} MiB")
+                            f"Mem BW Util: {util_mem}% | SM Clock: {sm_clock} MHz | "
+                            f"Memory: {mem_used}/{mem_total} MiB")
                 self.logger.info(log_line)
                 log_lines.append(log_line)
 
