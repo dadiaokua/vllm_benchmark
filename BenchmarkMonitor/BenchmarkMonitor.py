@@ -96,6 +96,11 @@ class ExperimentMonitor:
             output = result.stdout.strip()
             log_lines = []
             for line in output.split('\n'):
+                parts = [x.strip() for x in line.split(',')]
+                if len(parts) != 6:
+                    self.logger.warning(f"Unexpected nvidia-smi output line: {line}")
+                    continue
+
                 timestamp, index, util_gpu, util_sm, mem_used, mem_total = [x.strip() for x in line.split(',')]
                 log_line = (f"[{timestamp}] GPU {index} | GPU Util: {util_gpu}% | "
                             f"SM Util: {util_sm}% | Memory: {mem_used}/{mem_total} MiB")
