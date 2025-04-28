@@ -89,16 +89,16 @@ class ExperimentMonitor:
         try:
             result = subprocess.run(
                 ["nvidia-smi",
-                 "--query-gpu=timestamp,index,utilization.gpu,memory.used,memory.total",
+                 "--query-gpu=timestamp,index,utilization.gpu,utilization.sm,memory.used,memory.total",
                  "--format=csv,noheader,nounits"],
                 capture_output=True, text=True
             )
             output = result.stdout.strip()
             log_lines = []
             for line in output.split('\n'):
-                timestamp, index, util, mem_used, mem_total = [x.strip() for x in line.split(',')]
-                log_line = (f"[{timestamp}] GPU {index} | Utilization: {util}% | "
-                            f"Memory: {mem_used}/{mem_total} MiB")
+                timestamp, index, util_gpu, util_sm, mem_used, mem_total = [x.strip() for x in line.split(',')]
+                log_line = (f"[{timestamp}] GPU {index} | GPU Util: {util_gpu}% | "
+                            f"SM Util: {util_sm}% | Memory: {mem_used}/{mem_total} MiB")
                 self.logger.info(log_line)
                 log_lines.append(log_line)
 
@@ -168,16 +168,16 @@ class ExperimentMonitor:
     async def _adjust_fairness(self):
         """根据实验类型调整公平性"""
         self.logger.info(f"Starting fairness adjustment for {self.exp_type}...")
-        
+
         # 从映射中获取调整函数
         adjust_function = self.fairness_strategies.get(self.exp_type)
-        
+
         if adjust_function:
             exchange_count = await adjust_function(self.clients, self.exp_type)
         else:
             exchange_count = 0
             self.logger.warning(f"Invalid experiment type: {self.exp_type}, skipping fairness")
-        
+
         self.logger.info("Fairness adjustment complete")
         return exchange_count
 

@@ -3,8 +3,8 @@
 python3 run_benchmarks.py \
   --vllm_url http://222.201.144.120:8000/v1 \
   --api_key http://222.201.144.119:8000/v1 \
-  --request_timeout 20 \
-  --short_qps 5 5 5 5 5 \
+  --request_timeout 10 \
+  --short_qps 1 \
   --short_client_qps_ratio 1 \
   --long_qps 50 \
   --long_client_qps_ratio 1 \
@@ -12,12 +12,13 @@ python3 run_benchmarks.py \
   --concurrency 5 \
   --num_requests 100 \
   --short_clients 5 \
-  --long_clients 0 \
-  --sleep 5 \
+  --long_clients 5 \
+  --sleep 1 \
   --local_port 8000 \
   --remote_port 10085 \
   --use_time_data 0 \
   --round 5 \
   --round_time 60 \
   --exp LFS \
+  --use_tunnel 0 \
   --tokenizer /home/hjh/Model_Hub/models--deepseek-ai--DeepSeek-R1-Distill-Qwen-14B/snapshots/5ee96d8a09692e87087a6e0496d87124a1cdc3fe
