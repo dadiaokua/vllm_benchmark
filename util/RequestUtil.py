@@ -22,7 +22,7 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo):
+async def make_request(client, output_tokens, request_timeout, requests, tokenizer, latency_slo):
     start_time = time.time()
 
     try:
@@ -30,9 +30,7 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model="llama_8b",
-            messages=[
-                {"role": "user", "content": request}
-            ],
+            messages=[{"role": "user", "content": req} for req in requests],
             max_tokens=output_tokens,
             stream=True
         )
@@ -40,7 +38,7 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
-        input_token = tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
+        input_token = tokenizer(requests, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = total_tokens / elapsed_time if elapsed_time > 0 else 0
         return total_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= latency_slo else 0
@@ -56,66 +54,81 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout,
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
                  use_time_data, latency_slo, active_ratio, time_ratio):
-    """优化的worker逻辑"""
+    """考虑active_ratio和time_ratio的批量发送逻辑"""
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
+    task = None
+
+    # 调整每秒请求数
+    # adjusted_rate = int(rate_lambda / time_ratio)  # 考虑time_ratio
+    requests_per_second = max(1, rate_lambda)
+
+    # 计算活跃窗口
+    window_size = min(GLOBAL_CONFIG['max_granularity'], round_time)
+    active_duration = window_size * active_ratio
+
+    next_batch_time = time.time()  # 下一批次的目标时间
 
     while time.time() - global_start_time < round_time:
-        # 计算下一个请求的目标时间
-        target_time = get_target_time(request_count, rate_lambda, global_start_time, distribution,
-                                      use_time_data, time_data, active_ratio, round_time, time_ratio)
 
-        # 计算需要等待的时间
-        now = time.time()
-        wait_time = max(0, target_time - now)
+        # 发送这一秒的请求批次
+        batch_requests = []
+        for i in range(requests_per_second):
+            request = sample_content[request_count % len(sample_content)]
+            batch_requests.append(request)
 
+        selected_client = selected_clients[worker_id % len(selected_clients)]
+        if time.time() % window_size < active_duration:
+            task = asyncio.create_task(
+                process_request(
+                    selected_client, output_tokens, request_timeout, batch_requests,
+                    worker_id, tokenizer, results,
+                    client_index, semaphore, config_round, latency_slo
+                )
+            )
+        else:
+            await asyncio.sleep(window_size * (1 - active_ratio))
+            task = asyncio.create_task(
+                process_request(
+                    selected_client, output_tokens, request_timeout, batch_requests,
+                    worker_id, tokenizer, results,
+                    client_index, semaphore, config_round, latency_slo
+                )
+            )
+
+        request_count += requests_per_second
+
+        await asyncio.gather(*task)
+
+        # 更精确的时间控制
+        next_batch_time += 1.0  # 下一批次应该在1秒后
+        wait_time = next_batch_time - time.time()
         if wait_time > 0:
             await asyncio.sleep(wait_time)
 
-        # 发送请求并记录时间
-        actual_time = time.time()
-        drift = actual_time - target_time
-        drift_time += drift
-
-        # 限制打印频率，只在drift较大或每N个请求时打印
-        if drift > 1:
-            print(
-                f"Client {client_index}, Worker {worker_id}, Round {config_round + 1} "
-                f"Task {request_count}: Drift={drift:.3f}s, QPS={rate_lambda}"
-            )
-
-        # 发送请求
-        request = sample_content[request_count % len(sample_content)]
-        selected_client = selected_clients[request_count % len(selected_clients)]
-
-        asyncio.create_task(
-            process_request(selected_client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                            results, request_count, client_index, semaphore, config_round, latency_slo)
-        )
-
-        request_count += 1
-
-    return request_count, drift_time
+    return request_count, 0
 
 
-async def process_request(client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                          results, task_id, client_index, semaphore, config_round, latency_slo):
+async def process_request(client, output_tokens, request_timeout, batch_requests, worker_id, tokenizer,
+                          results, client_index, semaphore, config_round, latency_slo):
     async with semaphore:
+        request_count = len(batch_requests)
+        request_type = "requests" if request_count > 1 else "request"
         logging.info(
-            f"Starting worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
+            f"Starting worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index}")
         try:
-            result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
+            result = await make_request(client, output_tokens, request_timeout, batch_requests, tokenizer, latency_slo)
             if result:
                 results.append(result)
             else:
                 logging.warning(
-                    f"Worker {worker_id} {config_round + 1} round Request {task_id} failed for client {client_index}")
+                    f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} failed for client {client_index}")
         except Exception as e:
             logging.error(
-                f"Worker {worker_id} {config_round + 1} round Request {task_id} for client {client_index} raised an exception: {e}")
+                f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index} raised an exception: {e}")
         logging.info(
-            f"Finished worker {worker_id} {config_round + 1} round request {task_id} for client {client_index}")
+            f"Finished worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index}")
 
 
 def calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution):

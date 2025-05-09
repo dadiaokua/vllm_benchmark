@@ -52,7 +52,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.round = round
         self.exp_type = exp_type
-        self.latency_slo = GLOBAL_CONFIG.get("latency_slo", 5)
+        self.latency_slo = random.randint(int(request_timeout * 0.3), int(request_timeout * 0.7))
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1
@@ -84,13 +84,14 @@ class BenchmarkClient:
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qps}")
             result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qps, i, self.latency_slo)
 
+            if i != 0:
+                # 等待 monitor 通知处理完成
+                await self.monitor_done_event.wait()
+                self.monitor_done_event.clear()
+
             # Store and update results
             self.results.append(result)
             await self.result_queue.put(1)
-
-            # 等待 monitor 通知处理完成
-            await self.monitor_done_event.wait()
-            self.monitor_done_event.clear()
 
             self.results[-1]["fairness_ratio"] = self.fairness_ratio
             # Give monitor time to process
