@@ -52,7 +52,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.round = round
         self.exp_type = exp_type
-        self.latency_slo = random.randint(int(request_timeout * 0.3), int(request_timeout * 0.7))
+        self.latency_slo = random.randint(1, int(request_timeout * 0.7))
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1

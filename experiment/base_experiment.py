@@ -119,7 +119,6 @@ class BaseExperiment:
                     self.time_data,
                     self.use_time_data,
                     self.latency_slo,
-                    self.active_ratio,
                     self.time_ratio
                 )
             )

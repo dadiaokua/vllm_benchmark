@@ -98,7 +98,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
         tasks.append(client.start())
 
     # 创建监控器实例
-    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp, request_queue)
+    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp, request_queue, args.use_tunnel)
 
     # 创建监控任务
     monitor_task = asyncio.create_task(monitor())
@@ -142,6 +142,7 @@ async def main():
     print("\nBenchmark Configuration:")
     print("------------------------")
     print(f"vLLM Server URL: {args.vllm_url}")
+    print(f"Use Tunnel: {args.use_tunnel}")
     print(f"Distribution: {args.distribution}")
     print(f"Short QPS: {args.short_qps}")
     print(f"Short Client QPS Ratio: {args.short_client_qps_ratio}")

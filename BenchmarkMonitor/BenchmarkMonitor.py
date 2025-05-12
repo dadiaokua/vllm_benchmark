@@ -15,7 +15,7 @@ class ExperimentMonitor:
     实验监控器类，负责监控实验结果、计算公平性并触发资源调整
     """
 
-    def __init__(self, clients, result_queue, client_count, exp_type, request_queue, config=None):
+    def __init__(self, clients, result_queue, client_count, exp_type, request_queue, use_tunnel, config=None):
         """
         初始化监控器
 
@@ -36,6 +36,7 @@ class ExperimentMonitor:
         self.fairness_results = []
         self.start_time = None
         self.logger = self._setup_logger()
+        self.log_gpu_data = use_tunnel
 
         # 设置公平性调整策略映射
         self.fairness_strategies = {
@@ -78,7 +79,8 @@ class ExperimentMonitor:
 
         while datetime.now() - self.start_time < exp_duration:
             await self._check_results()
-            self._log_gpu_status()
+            if self.log_gpu_data == 0:
+                self._log_gpu_status()
             await asyncio.sleep(5)  # 每5秒检查一次
 
         self.logger.info(f'Experiment duration reached. Monitoring stopped.')
