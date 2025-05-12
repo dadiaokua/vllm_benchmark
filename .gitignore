@@ -5,6 +5,6 @@ start_run.sh
 sharegpt_*/
 longbench/
 vLLM_performance-venv/
-tmp_*/*
+tmp_result/
 results/*
 figure/*

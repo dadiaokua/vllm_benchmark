@@ -2,6 +2,8 @@ import asyncio
 import json
 import subprocess
 from datetime import datetime, timedelta
+import time
+from functools import wraps
 
 from config.Config import GLOBAL_CONFIG
 from util.FileSaveUtil import save_results
@@ -9,6 +11,17 @@ from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, 
 
 RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 
+def timing_decorator(func):
+    """装饰器：用于测量函数执行时间"""
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = await func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        print(f"{func.__name__} 执行时间: {execution_time:.4f} 秒")
+        return result
+    return wrapper
 
 class ExperimentMonitor:
     """
@@ -37,6 +50,7 @@ class ExperimentMonitor:
         self.start_time = None
         self.logger = self._setup_logger()
         self.log_gpu_data = use_tunnel
+        self.timing_stats = {}  # 用于存储时间统计
 
         # 设置公平性调整策略映射
         self.fairness_strategies = {
@@ -144,35 +158,50 @@ class ExperimentMonitor:
         else:
             self.logger.info(f'Queue is empty, waiting... (current client results: {len(self.tmp_results)})')
 
+    @timing_decorator
     async def _process_complete_round(self):
         """处理完整一轮的结果"""
-        self.logger.info(f'Reached client_count={self.client_count}, calculating fairness...')
-
+        total_start = time.time()
+        
         # 计算公平性
+        fairness_start = time.time()
         f_result, s_result = await self._calculate_fairness()
-        self.logger.info(f"Fairness calculation complete. Fairness index: {f_result}")
-
+        self._log_timing("fairness_calculation", fairness_start)
+        
         # 根据配置决定是否进行公平性调整
         if self.config["whether_fairness"]:
+            adjust_start = time.time()
             exchange_count = await self._adjust_fairness()
+            self._log_timing("fairness_adjustment", adjust_start)
         else:
             exchange_count = 0
-            self.logger.info("Skipping fairness adjustment (disabled in config)")
-
+        
         # 保存结果
+        save_start = time.time()
         self._save_results(f_result, s_result, exchange_count)
-
+        self._log_timing("save_results", save_start)
+        
         # 重置客户端
+        reset_start = time.time()
         await self._reset_clients()
-
+        self._log_timing("reset_clients", reset_start)
+        
         # 清空临时结果
         self.tmp_results = []
+        
+        # 记录总时间
+        self._log_timing("total_round", total_start)
+        
+        # 打印详细的时间统计
+        self._print_timing_stats()
 
+    @timing_decorator
     async def _calculate_fairness(self):
         """计算公平性指标"""
         self.logger.info("Starting fairness calculation...")
         return await fairness_result(self.clients, self.exp_type)
 
+    @timing_decorator
     async def _adjust_fairness(self):
         """根据实验类型调整公平性"""
         self.logger.info(f"Starting fairness adjustment for {self.exp_type}...")
@@ -189,6 +218,7 @@ class ExperimentMonitor:
         self.logger.info("Fairness adjustment complete")
         return exchange_count
 
+    @timing_decorator
     def _save_results(self, f_result, s_result, exchange_count):
         """保存结果到文件"""
         results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
@@ -196,6 +226,7 @@ class ExperimentMonitor:
         self.fairness_results.append((f_result, s_result))
         self.logger.info(f'Results saved to {results_file}')
 
+    @timing_decorator
     async def _reset_clients(self):
         """重置所有客户端"""
         self.logger.info("Notifying clients of completion...")
@@ -204,3 +235,45 @@ class ExperimentMonitor:
             client.exchange_Resources_Times = 0
             client.monitor_done_event.set()
         self.logger.info("All clients notified")
+
+    def _log_timing(self, operation, start_time):
+        """记录操作执行时间"""
+        end_time = time.time()
+        duration = end_time - start_time
+        if operation not in self.timing_stats:
+            self.timing_stats[operation] = []
+        self.timing_stats[operation].append(duration)
+
+    def _print_timing_stats(self):
+        """打印时间统计信息并保存到文件"""
+        # 创建time_log目录
+        import os
+        if not os.path.exists('time_log'):
+            os.makedirs('time_log')
+
+        # 生成时间戳作为文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f'time_log/timing_stats_{timestamp}.txt'
+
+        # 准备输出内容
+        output = ["\n=== 时间统计 ==="]
+        for operation, times in self.timing_stats.items():
+            avg_time = sum(times) / len(times)
+            max_time = max(times)
+            min_time = min(times)
+            stats = [
+                f"{operation}:",
+                f"  平均时间: {avg_time:.4f} 秒",
+                f"  最长时间: {max_time:.4f} 秒", 
+                f"  最短时间: {min_time:.4f} 秒",
+                f"  执行次数: {len(times)}"
+            ]
+            output.extend(stats)
+        output.append("==============\n")
+
+        # 写入文件
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(output))
+
+        # 同时打印到控制台
+        print('\n'.join(output))
