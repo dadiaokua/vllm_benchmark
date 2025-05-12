@@ -135,7 +135,7 @@ async def prepare_benchmark_data(client_type, tokenizer):
     # Format and filter data
     try:
         formatter = QAJsonFormatter()
-        max_samples = 1000
+        max_samples = 10000
         formatted_json = await formatter.format_qa_json(
             tokenizer, dataset2prompt, GLOBAL_CONFIG.get('prompt_max_len', 256), jsonl_files, data_path, max_samples,
             client_type)
@@ -303,7 +303,7 @@ if __name__ == "__main__":
         os.makedirs('prompt_hub')
 
     tokenizer = AutoTokenizer.from_pretrained(
-        "/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659",
+        "/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
         trust_remote_code=True)
 
     # Save short context prompts
