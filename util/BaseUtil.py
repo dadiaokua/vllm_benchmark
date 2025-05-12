@@ -121,15 +121,15 @@ def adjust_resources(client_low_fairness_ratio, client_high_fairness_ratio, delt
     client_high_fairness_ratio.time_ratio = client_high_fairness_ratio.time_ratio * (1 - delta)
     client_low_fairness_ratio.time_ratio = client_low_fairness_ratio.time_ratio * (1 + delta)
 
-    # 减少 client1 的 active_ratio - 无论负载如何
-    min_active_ratio = GLOBAL_CONFIG.get("MIN_ACTIVE_RATIO", 0.1)
-    client_low_fairness_ratio.active_ratio = max(client_low_fairness_ratio.active_ratio - delta, min_active_ratio)
-    client_high_fairness_ratio.active_ratio = min(client_high_fairness_ratio.active_ratio + delta, 1)
+    # # 减少 client1 的 active_ratio - 无论负载如何
+    # min_active_ratio = GLOBAL_CONFIG.get("MIN_ACTIVE_RATIO", 0.1)
+    # client_low_fairness_ratio.active_ratio = max(client_low_fairness_ratio.active_ratio - delta, min_active_ratio)
+    # client_high_fairness_ratio.active_ratio = min(client_high_fairness_ratio.active_ratio + delta, 1)
 
     # 记录调整信息
     print(f"Adjusted resources: client1.time_ratio={client_low_fairness_ratio.time_ratio:.2f}, "
-          f"client2.time_ratio={client_high_fairness_ratio.time_ratio:.2f}, "
-          f"client1.active_ratio={client_low_fairness_ratio.active_ratio:.2f}")
+          f"client2.time_ratio={client_high_fairness_ratio.time_ratio:.2f}")
+        #   f"client1.active_ratio={client_low_fairness_ratio.active_ratio:.2f}")
 
 
 def update_credits_and_counters(client1, client2, delta):
@@ -145,70 +145,62 @@ def update_credits_and_counters(client1, client2, delta):
 def selectClients_LFS(clients):
     """
     从客户端列表中选择两个客户端进行资源交换
-
-    选择逻辑:
-    1. 从两端向中间查找，找到第一对满足差值条件的客户端索引 (i, j)
-    2. 在低端 (0 到 i) 选择最优的低 fairness_ratio 客户端
-    3. 在高端 (j 到 end) 选择最优的高 fairness_ratio 客户端
-
-    Args:
-        clients: 已按 fairness_ratio 排序的客户端列表
-
-    Returns:
-        tuple: (低 fairness_ratio 的客户端, 高 fairness_ratio 的客户端)
+    优化版本：使用单次遍历和更高效的数据结构
     """
     n = len(clients)
+    if n < 2:
+        return None, None
 
-    # 从两端向中间查找，找到第一对满足条件的索引
-    i, j = 0, n - 1
-    found = False
+    # 使用列表推导式快速过滤出可交换的客户端
+    eligible_clients = [
+        client for client in clients 
+        if client.exchange_Resources_Times < GLOBAL_CONFIG.get('max_exchange_times', 3)
+    ]
+    
+    if len(eligible_clients) < 2:
+        return None, None
 
-    while i < j:
-        if clients[i].exchange_Resources_Times >= GLOBAL_CONFIG.get('max_exchange_times', 3):
-            i += 1
-            continue
-        elif clients[j].exchange_Resources_Times >= GLOBAL_CONFIG.get('max_exchange_times', 3):
-            j -= 1
-            continue
-
-        if abs(clients[i].fairness_ratio - clients[j].fairness_ratio) > GLOBAL_CONFIG['fairness_ratio_LFS']:
-            found = True
+    # 按fairness_ratio排序
+    eligible_clients.sort(key=lambda x: x.fairness_ratio)
+    
+    # 使用双指针快速找到最大差距对
+    max_diff = 0
+    best_pair = None
+    
+    # 从两端向中间移动，找到最大差距对
+    left, right = 0, len(eligible_clients) - 1
+    while left < right:
+        diff = abs(eligible_clients[left].fairness_ratio - eligible_clients[right].fairness_ratio)
+        if diff > GLOBAL_CONFIG['fairness_ratio_LFS']:
+            if diff > max_diff:
+                max_diff = diff
+                best_pair = (left, right)
+            # 移动差距较小的一端
+            if (eligible_clients[left + 1].fairness_ratio - eligible_clients[left].fairness_ratio < 
+                eligible_clients[right].fairness_ratio - eligible_clients[right - 1].fairness_ratio):
+                left += 1
+            else:
+                right -= 1
         else:
             break
-        # 移动差距较小的一端
-        if clients[i + 1].fairness_ratio - clients[i].fairness_ratio < clients[j].fairness_ratio - clients[
-            j - 1].fairness_ratio:
-            i += 1
-        else:
-            j -= 1
 
-    if not found:
+    if not best_pair:
         print("[Fairness] No client pairs found with sufficient fairness ratio difference")
         return None, None
 
-    # 在低端选择最优的客户端
-    best_low = clients[0]
-
-    for k in range(1, i + 1):
-        if clients[k].exchange_Resources_Times >= GLOBAL_CONFIG.get('max_exchange_times', 3):
-            continue
-        if clients[k].exchange_Resources_Times < best_low.exchange_Resources_Times:
-            best_low = clients[k]
-        elif clients[k].exchange_Resources_Times == best_low.exchange_Resources_Times and clients[
-            k].credit < best_low.credit:
-            best_low = clients[k]
-
-    # 在高端选择最优的客户端
-    best_high = clients[n - 1]
-
-    for k in range(n - 2, j - 1, -1):
-        if clients[k].exchange_Resources_Times >= GLOBAL_CONFIG.get('max_exchange_times', 3):
-            continue
-        if clients[k].exchange_Resources_Times < best_high.exchange_Resources_Times:
-            best_high = clients[k]
-        elif clients[k].exchange_Resources_Times == best_high.exchange_Resources_Times and clients[
-            k].credit > best_high.credit:
-            best_high = clients[k]
+    # 在找到的范围内选择最优客户端
+    low_idx, high_idx = best_pair
+    
+    # 使用min和key函数快速找到最优客户端
+    best_low = min(
+        eligible_clients[:low_idx + 1],
+        key=lambda x: (x.exchange_Resources_Times, x.credit)
+    )
+    
+    best_high = min(
+        eligible_clients[high_idx:],
+        key=lambda x: (x.exchange_Resources_Times, -x.credit)
+    )
 
     print(
         f"[Fairness] Selected clients with fairness ratios: {best_low.fairness_ratio:.3f} and {best_high.fairness_ratio:.3f}")

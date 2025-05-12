@@ -53,63 +53,50 @@ async def make_request(client, output_tokens, request_timeout, requests, tokeniz
 
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout,
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
-                 use_time_data, latency_slo, active_ratio, time_ratio):
-    """考虑active_ratio和time_ratio的批量发送逻辑"""
+                 use_time_data, latency_slo, time_ratio):
+    """每个task发送单个请求，使用get_target_time控制间隔"""
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
-    tasks = []  # 改为列表存储所有任务
-
-    # 调整每秒请求数
-    requests_per_second = max(1, rate_lambda)
-
-    # 计算活跃窗口
-    window_size = min(GLOBAL_CONFIG['max_granularity'], round_time)
-    active_duration = window_size * active_ratio
-
-    next_batch_time = time.time()  # 下一批次的目标时间
+    tasks = []
 
     while time.time() - global_start_time < round_time:
-        # 发送这一秒的请求批次
-        batch_requests = []
-        for i in range(requests_per_second):
-            request = sample_content[request_count % len(sample_content)]
-            batch_requests.append(request)
+        # 计算当前请求的目标时间
+        target_time = get_target_time(
+            request_count=request_count,
+            rate_lambda=rate_lambda,
+            global_start_time=global_start_time,
+            distribution=distribution,
+            use_time_data=use_time_data,
+            time_data=time_data,
+            time_ratio=time_ratio,
+            window_length=round_time
+        )
 
-        selected_client = selected_clients[worker_id % len(selected_clients)]
-        if time.time() % window_size < active_duration:
+        # 如果目标时间已经过去，直接发送请求
+        if target_time <= time.time():
+            drift_time = target_time - time.time()
+            request = random.choice(sample_content)
+            selected_client = selected_clients[worker_id % len(selected_clients)]
+            
             task = asyncio.create_task(
                 process_request(
-                    selected_client, output_tokens, request_timeout, batch_requests,
+                    selected_client, output_tokens, request_timeout, [request],  # 注意这里改为单个请求的列表
                     worker_id, tokenizer, results,
                     client_index, semaphore, config_round, latency_slo
                 )
             )
-            tasks.append(task)  # 将任务添加到列表中
+            tasks.append(task)
+            request_count += 1
         else:
-            await asyncio.sleep(window_size * (1 - active_ratio))
-            task = asyncio.create_task(
-                process_request(
-                    selected_client, output_tokens, request_timeout, batch_requests,
-                    worker_id, tokenizer, results,
-                    client_index, semaphore, config_round, latency_slo
-                )
-            )
-            tasks.append(task)  # 将任务添加到列表中
-
-        request_count += requests_per_second
-
-        # 更精确的时间控制
-        next_batch_time += 1.0  # 下一批次应该在1秒后
-        wait_time = next_batch_time - time.time()
-        if wait_time > 0:
-            await asyncio.sleep(wait_time)
+            # 等待到目标时间
+            await asyncio.sleep(target_time - time.time())
 
     # 等待所有任务完成
     if tasks:
         await asyncio.gather(*tasks)
 
-    return request_count, 0
+    return request_count, drift_time
 
 
 async def process_request(client, output_tokens, request_timeout, batch_requests, worker_id, tokenizer,
@@ -117,7 +104,7 @@ async def process_request(client, output_tokens, request_timeout, batch_requests
     async with semaphore:
         request_count = len(batch_requests)
         request_type = "requests" if request_count > 1 else "request"
-        for request_index, request in enumerate(batch_requests):
+        for _, request in enumerate(batch_requests):
             try:
                 result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
                 if result:
@@ -125,6 +112,8 @@ async def process_request(client, output_tokens, request_timeout, batch_requests
             except Exception as e:
                 logging.error(
                     f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index} raised an exception: {e}")
+
+
 def calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution):
     """计算基础请求时间，考虑 QPS 要求"""
     if rate_lambda <= 0:
@@ -147,19 +136,16 @@ def calculate_raw_request_time(request_count, rate_lambda, global_start_time, di
     return global_start_time + (request_count * interval)
 
 
-def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data, active_ratio,
-                    window_length, time_ratio):
-    """计算目标请求时间，考虑 time_ratio 对间隔的影响"""
+def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data, time_ratio,
+                    window_length):
+    """计算目标请求时间，只考虑 time_ratio 对间隔的影响"""
     if use_time_data:
         return time_data[request_count]
-    else:
-        raw_time = calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution)
-
-    # 应用time_ratio调整整体发送时间
+    
+    raw_time = calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution)
     time_since_start = raw_time - global_start_time
 
     # 使用非线性映射来避免在窗口末尾堆积请求
-    # 当time_ratio > 1时，使用一个平滑的函数来分散请求
     if time_ratio > 1 and time_since_start <= window_length:
         # 使用sigmoid类函数进行平滑映射
         progress = time_since_start / window_length
@@ -174,25 +160,4 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
     if adjusted_time_since_start > window_length >= time_since_start:
         adjusted_time_since_start = window_length
 
-    # 控制发送时间段 - 更频繁的活跃/非活跃切换
-    time_since_start = adjusted_time_since_start
-
-    # 使用更小的窗口长度，以实现更频繁的切换
-    small_window_length = min(GLOBAL_CONFIG['max_granularity'], window_length)  # 默认使用10秒的小窗口，除非原窗口更小
-
-    # 计算在小窗口内的位置
-    small_window_position = time_since_start % small_window_length
-    active_duration = small_window_length * active_ratio
-
-    if small_window_position < active_duration:
-        # 当前时间在可发时间段内，直接返回
-        return raw_time
-    else:
-        # 在不可发时间段 - 推迟到下一个小窗口的开始
-        wait_time = small_window_length - small_window_position
-
-        # 可选：添加一些随机性，避免所有请求都在窗口开始时堆积
-        random_offset = np.random.uniform(0, active_duration)  # 小的随机偏移
-
-        adjusted_time = raw_time + wait_time + random_offset
-        return adjusted_time
+    return global_start_time + adjusted_time_since_start

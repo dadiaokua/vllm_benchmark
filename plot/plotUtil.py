@@ -79,7 +79,8 @@ def plot_fairness_index(ax, f_values, times):
                        fontsize=8)
     
     ax.set_title("Jain's Fairness Index")
-    ax.set_ylim(0.9, 1.01)  # 调整y轴范围以更好地显示接近1的值
+    min_f = min(f_values) if f_values else 0.7  # Get minimum fairness value, default to 0.7 if empty
+    ax.set_ylim(min_f * 0.7, 1.01)  # 调整y轴范围以更好地显示接近1的值
     ax.grid(True, linestyle='--', alpha=0.7)
     ax.set_xlabel("Time Point")
     ax.set_ylabel("Fairness Index")
