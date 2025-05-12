@@ -135,7 +135,7 @@ async def main():
     parser.add_argument("--round_time", type=int, default=600, help="Timeout for every round (default: 600)",
                         required=True)
     parser.add_argument("--exp", type=str, help="Experiment type", required=True, default="LFS")
-    parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/models--meta-llama--Llama-3.1-8B-Instruct/snapshots/0e9e39f249a16976918f6564b8830bc894c89659")
+    parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4")
 
     args = parser.parse_args()
 

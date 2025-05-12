@@ -22,7 +22,7 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, output_tokens, request_timeout, requests, tokenizer, latency_slo):
+async def make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo):
     start_time = time.time()
 
     try:
@@ -30,7 +30,7 @@ async def make_request(client, output_tokens, request_timeout, requests, tokeniz
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model="llama_8b",
-            messages=[{"role": "user", "content": req} for req in requests],
+            messages=[{"role": "user", "content": request}],
             max_tokens=output_tokens,
             stream=True
         )
@@ -38,7 +38,7 @@ async def make_request(client, output_tokens, request_timeout, requests, tokeniz
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
-        input_token = tokenizer(requests, truncation=False, return_tensors="pt").input_ids[0]
+        input_token = tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = total_tokens / elapsed_time if elapsed_time > 0 else 0
         return total_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= latency_slo else 0
@@ -76,9 +76,14 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         # 如果目标时间已经过去，直接发送请求
         if target_time <= time.time():
             drift_time = target_time - time.time()
+            # while True:
+            #     request = random.choice(sample_content)
+            #     input_len = len(tokenizer(request, truncation=False, return_tensors="pt").input_ids[0])
+            #     if input_len <= 3000:
+            #         break
             request = random.choice(sample_content)
             selected_client = selected_clients[worker_id % len(selected_clients)]
-            
+
             task = asyncio.create_task(
                 process_request(
                     selected_client, output_tokens, request_timeout, [request],  # 注意这里改为单个请求的列表
@@ -141,7 +146,7 @@ def get_target_time(request_count, rate_lambda, global_start_time, distribution,
     """计算目标请求时间，只考虑 time_ratio 对间隔的影响"""
     if use_time_data:
         return time_data[request_count]
-    
+
     raw_time = calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution)
     time_since_start = raw_time - global_start_time
 

@@ -57,7 +57,7 @@ class QAJsonFormatter:
             file_prompts = []
             file_path = os.path.join(dataset_path, jsonl_file)
             print(f"正在处理文件: {file_path}")
-            prompt_format = dataset2prompt[jsonl_file.split(".")[0]]
+            # prompt_format = dataset2prompt[jsonl_file.split(".")[0]]
 
             with open(file_path) as f:
                 for line in f:
@@ -67,32 +67,27 @@ class QAJsonFormatter:
                         print(f"文件 {jsonl_file} 为空")
                         continue
 
-                    if client_type == "longg":
-                        prompt = prompt_format.format(**data)
-                        tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
-                        if len(tokenized_prompt) > maxlen:
-                            half = int(maxlen / 2)
-                            prompt = tokenizer.decode(tokenized_prompt[:half],
-                                                      skip_special_tokens=True) + tokenizer.decode(
-                                tokenized_prompt[-half:], skip_special_tokens=True)
-                    elif client_type == "long":
+                    if client_type == "long":
                         if len(data["conversations"]) >= 2:
                             prompt = data["conversations"][0]["value"]
-                        tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
+                        model_max_len = min(tokenizer.model_max_length, 3000)  # 防止意外
+                        tokenized_prompt = tokenizer(prompt, truncation=True, max_length=model_max_len - 256,
+                                              return_tensors="pt").input_ids[0]
                         if len(tokenized_prompt) > (maxlen):
                             continue
+                        else:
+                            file_prompts.append(tokenizer.decode(tokenized_prompt, skip_special_tokens=True))
                     else:
                         if len(data["conversations"]) >= 2:
                             prompt = data["conversations"][0]["value"]
-                        tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt").input_ids[0]
+                        model_max_len = min(tokenizer.model_max_length, 3000)  # 防止意外
+                        tokenized_prompt = tokenizer(prompt, truncation=True, max_length=model_max_len - 256,
+                                                     return_tensors="pt").input_ids[0]
                         if len(tokenized_prompt) > (maxlen / 4):
-                            # half = int(maxlen / 2)
-                            # prompt = tokenizer.decode(tokenized_prompt[:half],
-                            #                           skip_special_tokens=True) + tokenizer.decode(
-                            #     tokenized_prompt[-half:], skip_special_tokens=True)
                             continue
+                        else:
+                            file_prompts.append(tokenizer.decode(tokenized_prompt, skip_special_tokens=True))
 
-                    file_prompts.append(prompt)
                     if len(file_prompts) > num_request / len(jsonl_files):
                         break
             return file_prompts
