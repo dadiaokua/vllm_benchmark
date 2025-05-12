@@ -146,6 +146,8 @@ class TestRequestUtil(unittest.TestCase):
         self.assertEqual(drift_time, 0)
         # 验证sleep被调用
         mock_sleep.assert_called()
+        # 验证所有任务都被创建和等待
+        self.assertTrue(len(results) > 0)
 
 
 if __name__ == '__main__':

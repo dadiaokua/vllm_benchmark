@@ -58,10 +58,9 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
-    task = None
+    tasks = []  # 改为列表存储所有任务
 
     # 调整每秒请求数
-    # adjusted_rate = int(rate_lambda / time_ratio)  # 考虑time_ratio
     requests_per_second = max(1, rate_lambda)
 
     # 计算活跃窗口
@@ -71,7 +70,6 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     next_batch_time = time.time()  # 下一批次的目标时间
 
     while time.time() - global_start_time < round_time:
-
         # 发送这一秒的请求批次
         batch_requests = []
         for i in range(requests_per_second):
@@ -87,6 +85,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                     client_index, semaphore, config_round, latency_slo
                 )
             )
+            tasks.append(task)  # 将任务添加到列表中
         else:
             await asyncio.sleep(window_size * (1 - active_ratio))
             task = asyncio.create_task(
@@ -96,16 +95,19 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                     client_index, semaphore, config_round, latency_slo
                 )
             )
+            tasks.append(task)  # 将任务添加到列表中
 
         request_count += requests_per_second
-
-        await asyncio.gather(*task)
 
         # 更精确的时间控制
         next_batch_time += 1.0  # 下一批次应该在1秒后
         wait_time = next_batch_time - time.time()
         if wait_time > 0:
             await asyncio.sleep(wait_time)
+
+    # 等待所有任务完成
+    if tasks:
+        await asyncio.gather(*tasks)
 
     return request_count, 0
 
@@ -115,22 +117,14 @@ async def process_request(client, output_tokens, request_timeout, batch_requests
     async with semaphore:
         request_count = len(batch_requests)
         request_type = "requests" if request_count > 1 else "request"
-        logging.info(
-            f"Starting worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index}")
-        try:
-            result = await make_request(client, output_tokens, request_timeout, batch_requests, tokenizer, latency_slo)
-            if result:
-                results.append(result)
-            else:
-                logging.warning(
-                    f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} failed for client {client_index}")
-        except Exception as e:
-            logging.error(
-                f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index} raised an exception: {e}")
-        logging.info(
-            f"Finished worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index}")
-
-
+        for request_index, request in enumerate(batch_requests):
+            try:
+                result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
+                if result:
+                    results.append(result)
+            except Exception as e:
+                logging.error(
+                    f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index} raised an exception: {e}")
 def calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution):
     """计算基础请求时间，考虑 QPS 要求"""
     if rate_lambda <= 0:
