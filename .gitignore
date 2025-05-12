@@ -1,6 +1,5 @@
 start_vllm_benchmark.sh
 benchmark_results.json
-start_run.sh
 
 sharegpt_*/
 longbench/
