@@ -121,11 +121,10 @@ class ExperimentMonitor:
                 log_line = (f"[{timestamp}] GPU {index} | GPU Util: {util_gpu}% | "
                             f"Mem BW Util: {util_mem}% | SM Clock: {sm_clock} MHz | "
                             f"Memory: {mem_used}/{mem_total} MiB")
-                self.logger.info(log_line)
                 log_lines.append(log_line)
 
             # 可选：追加记录到文件
-            with open("tmp_result/gpu_monitor_log.txt", "a") as f:
+            with open(f"tmp_result/gpu_monitor_log_{GLOBAL_CONFIG.get('monitor_file_time')}.txt", "a") as f:
                 for log in log_lines:
                     f.write(log + "\n")
 

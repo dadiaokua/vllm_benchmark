@@ -15,5 +15,5 @@ GLOBAL_CONFIG = {
     "exp_time": 3600 * 2,
     "avg_success_rate": 0.9,
     "max_exchange_times": 1,
-    "prompt_max_len": 256,
+    "prompt_max_len": 1024,
 }
