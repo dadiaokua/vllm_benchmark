@@ -78,7 +78,7 @@ async def fairness_result(clients, exp_type):
 
         # Calculate service value
         service_value = calculate_service_value(
-            latest_result["total_input_tokens"],
+            latest_result["total_input_tokens"], 
             latest_result["total_output_tokens"]
         )
 
@@ -97,8 +97,10 @@ async def fairness_result(clients, exp_type):
     # Calculate fairness ratios in one pass
     alpha = GLOBAL_CONFIG['alpha']
     for client in clients:
-        client.fairness_ratio = (client.service / max_service) * (
-                1 - alpha) + alpha * (client.slo_violation_count / client.results[-1]['total_requests'])
+        slo_violation_ratio = client.slo_violation_count / client.results[-1]['total_requests']
+        service_ratio = client.service / max_service
+        client.fairness_ratio = service_ratio * (1 - alpha) + alpha * slo_violation_ratio
+
 
     # Calculate Jain's fairness index
     tmp_jains_index = calculate_Jains_index(clients, exp_type)
@@ -113,15 +115,15 @@ async def is_fairness_LFSLLM(clients, exp_type):
     iteration = 0
     count = 0
 
-    while iteration < (len(clients) - 1):
-        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
+    while iteration < (len(clients)  / 2):
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) / 2}")
         clients.sort(key=lambda client: client.fairness_ratio)
         client_low_fairness_ratio, client_high_fairness_ratio = selectClients_LFS(clients)
         if client_low_fairness_ratio is not None and client_high_fairness_ratio is not None:
             exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, clients, exp_type)
             count += 1
         else:
-            break
+            return count
         iteration += 1
 
     print("[Fairness] WARNING: Reached maximum iterations without achieving target fairness ratio")
@@ -135,8 +137,8 @@ async def is_fairness_VTC(clients, exp_type):
     iteration = 0
     count = 0
 
-    while iteration < (len(clients) - 1):
-        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
+    while iteration < (len(clients) / 2):
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) / 2}")
         clients.sort(key=lambda client: client.service)
         client1, client2 = selectClients_VTC(clients)
         if client1 is not None and client2 is not None:
@@ -156,8 +158,8 @@ async def is_fairness_DLPM(clients, exp_type):
         return
     iteration = 0
     count = 0
-    while iteration < (len(clients) - 1):
-        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) - 1}")
+    while iteration < (len(clients) / 2):
+        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) / 2}")
         clients.sort(key=lambda client: client.service)
         client1, client2 = selectClients_VTC(clients)
         if client1 is not None and client2 is not None:

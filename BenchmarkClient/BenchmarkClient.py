@@ -14,7 +14,7 @@ class BenchmarkClient:
 
     def __init__(self, client_type, client_index, qps, port, api_key, tokenizer, exp_type,
                  distribution, request_timeout, concurrency, round, round_time, sleep, time_data,
-                 result_queue, formatted_json, OpenAI_client, qps_ratio, use_time_data=0):
+                 result_queue, formatted_json, OpenAI_client, qps_ratio, latency_slo, use_time_data=0):
         """Initialize a benchmark client
 
         Args:
@@ -52,7 +52,7 @@ class BenchmarkClient:
         self.time_data = time_data
         self.round = round
         self.exp_type = exp_type
-        self.latency_slo = random.randint(1, int(request_timeout * 0.7))
+        self.latency_slo = latency_slo
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1
@@ -88,6 +88,9 @@ class BenchmarkClient:
                 # 等待 monitor 通知处理完成
                 await self.monitor_done_event.wait()
                 self.monitor_done_event.clear()
+                if i == 1:
+                    self.results[-1]["fairness_ratio"] = self.fairness_ratio
+
 
             # Store and update results
             self.results.append(result)

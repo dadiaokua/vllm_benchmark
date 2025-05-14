@@ -1,6 +1,7 @@
 import asyncio
 import json
 import subprocess
+import os
 from datetime import datetime, timedelta
 import time
 from functools import wraps
@@ -14,14 +15,43 @@ RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 def timing_decorator(func):
     """装饰器：用于测量函数执行时间"""
     @wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def async_wrapper(*args, **kwargs):
         start_time = time.time()
         result = await func(*args, **kwargs)
         end_time = time.time()
         execution_time = end_time - start_time
-        print(f"{func.__name__} 执行时间: {execution_time:.4f} 秒")
+        
+        # 获取实例的timing_stats
+        self = args[0]
+        if not hasattr(self, 'timing_stats'):
+            self.timing_stats = {}
+        if func.__name__ not in self.timing_stats:
+            self.timing_stats[func.__name__] = []
+        self.timing_stats[func.__name__].append(execution_time)
+        
         return result
-    return wrapper
+
+    @wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # 获取实例的timing_stats
+        self = args[0]
+        if not hasattr(self, 'timing_stats'):
+            self.timing_stats = {}
+        if func.__name__ not in self.timing_stats:
+            self.timing_stats[func.__name__] = []
+        self.timing_stats[func.__name__].append(execution_time)
+        
+        return result
+
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper
 
 class ExperimentMonitor:
     """
@@ -63,18 +93,30 @@ class ExperimentMonitor:
         """设置日志记录器"""
         import logging
         logger = logging.getLogger(f"ExperimentMonitor-{self.exp_type}")
-        logger.setLevel(logging.INFO)
-
-        # 创建控制台处理器
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.INFO)
-
-        # 创建格式化器
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        ch.setFormatter(formatter)
-
-        # 添加处理器到日志记录器
-        logger.addHandler(ch)
+        
+        # 确保日志记录器没有被重复配置
+        if not logger.handlers:
+            logger.setLevel(logging.INFO)
+            
+            # 创建控制台处理器
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            
+            # 创建文件处理器
+            fh = logging.FileHandler(f'tmp_result/monitor_{self.exp_type}.log')
+            fh.setLevel(logging.INFO)
+            
+            # 创建格式化器
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            ch.setFormatter(formatter)
+            fh.setFormatter(formatter)
+            
+            # 添加处理器到日志记录器
+            logger.addHandler(ch)
+            logger.addHandler(fh)
+            
+            # 确保日志不会被父级处理器处理
+            logger.propagate = False
 
         return logger
 
@@ -154,50 +196,43 @@ class ExperimentMonitor:
                 self.logger.info('Task marked as done')
             except asyncio.TimeoutError:
                 self.logger.warning("Timeout while waiting for result.")
-        else:
-            self.logger.info(f'Queue is empty, waiting... (current client results: {len(self.tmp_results)})')
 
     @timing_decorator
     async def _process_complete_round(self):
         """处理完整一轮的结果"""
-        total_start = time.time()
-        
-        # 计算公平性
-        fairness_start = time.time()
-        f_result, s_result = await self._calculate_fairness()
-        self._log_timing("fairness_calculation", fairness_start)
-        
-        # 根据配置决定是否进行公平性调整
-        if self.config["whether_fairness"]:
-            adjust_start = time.time()
-            exchange_count = await self._adjust_fairness()
-            self._log_timing("fairness_adjustment", adjust_start)
-        else:
-            exchange_count = 0
-        
-        # 保存结果
-        save_start = time.time()
-        self._save_results(f_result, s_result, exchange_count)
-        self._log_timing("save_results", save_start)
-        
-        # 重置客户端
-        reset_start = time.time()
-        await self._reset_clients()
-        self._log_timing("reset_clients", reset_start)
-        
-        # 清空临时结果
-        self.tmp_results = []
-        
-        # 记录总时间
-        self._log_timing("total_round", total_start)
-        
-        # 打印详细的时间统计
-        self._print_timing_stats()
+        try:
+            # 计算公平性
+            f_result, s_result = await self._calculate_fairness()
+            self.logger.info(f"Fairness calculation complete: {f_result}, {s_result}")
+            
+            # 根据配置决定是否进行公平性调整
+            if self.config["whether_fairness"]:
+                exchange_count = await self._adjust_fairness()
+            else:
+                exchange_count = 0
+                self.logger.info("Skipping fairness adjustment (disabled in config)")
+            
+            # 保存结果
+            print(f"Saving results... {f_result}, {s_result}, {exchange_count}")
+            self._save_results(f_result, s_result, exchange_count)
+            print("Results saved successfully")
+            
+            # 重置客户端
+            await self._reset_clients()
+            
+            # 清空临时结果
+            self.tmp_results = []
+
+            # 打印详细的时间统计
+            self._print_timing_stats()
+            
+        except Exception as e:
+            self.logger.error(f"Error in _process_complete_round: {str(e)}")
+            raise
 
     @timing_decorator
     async def _calculate_fairness(self):
         """计算公平性指标"""
-        self.logger.info("Starting fairness calculation...")
         return await fairness_result(self.clients, self.exp_type)
 
     @timing_decorator
@@ -220,10 +255,23 @@ class ExperimentMonitor:
     @timing_decorator
     def _save_results(self, f_result, s_result, exchange_count):
         """保存结果到文件"""
-        results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
-        save_results(exchange_count, f_result, s_result, results_file)
-        self.fairness_results.append((f_result, s_result))
-        self.logger.info(f'Results saved to {results_file}')
+        try:
+            print("Starting to save results...")
+            results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
+
+            # 确保结果文件存在
+            os.makedirs(os.path.dirname(results_file), exist_ok=True)
+            
+            # 保存结果
+            save_results(exchange_count, f_result, s_result, results_file)
+            self.fairness_results.append((f_result, s_result))
+            
+            print(f"Results saved to {results_file}: {f_result}, {s_result}")
+            return True
+        except Exception as e:
+            print(f"Error saving results: {str(e)}")
+            print(f"Detailed error information: {e}")
+            raise
 
     @timing_decorator
     async def _reset_clients(self):
@@ -234,14 +282,6 @@ class ExperimentMonitor:
             client.exchange_Resources_Times = 0
             client.monitor_done_event.set()
         self.logger.info("All clients notified")
-
-    def _log_timing(self, operation, start_time):
-        """记录操作执行时间"""
-        end_time = time.time()
-        duration = end_time - start_time
-        if operation not in self.timing_stats:
-            self.timing_stats[operation] = []
-        self.timing_stats[operation].append(duration)
 
     def _print_timing_stats(self):
         """打印时间统计信息并保存到文件"""

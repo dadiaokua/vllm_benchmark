@@ -67,6 +67,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             round=args.round,
             exp_type=args.exp,
             qps_ratio=args.short_client_qps_ratio,
+            latency_slo=int(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index])
         )
         clients.append(client)
         tasks.append(client.start())
@@ -92,7 +93,8 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             time_data=None,
             round=args.round,
             exp_type=args.exp,
-            qps_ratio=args.long_client_qps_ratio
+            qps_ratio=args.long_client_qps_ratio,
+            latency_slo=int(args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index])
         )
         clients.append(client)
         tasks.append(client.start())
@@ -124,7 +126,9 @@ async def main():
     parser.add_argument("--concurrency", type=int, help="concurrency", default=50)
     parser.add_argument("--num_requests", type=int, help="Number of requests", default=1000)
     parser.add_argument("--short_clients", type=int, help="Number of client send short context", default=1)
+    parser.add_argument("--short_clients_slo", type=str, nargs='+', required=True, help="Slo of short client")
     parser.add_argument("--long_clients", type=int, help="Number of client send long context", default=1)
+    parser.add_argument("--long_clients_slo", type=str, nargs='+', required=True, help="Slo of long client")
     parser.add_argument("--sleep", type=int, help="Sleep time per concurrency", default=60)
     parser.add_argument("--local_port", type=int, nargs='+', required=True, help="local port", default=[8080])
     parser.add_argument("--remote_port", type=int, nargs='+', required=True, help="remote ssh port", default=[8080])
@@ -151,7 +155,9 @@ async def main():
     print(f"Concurrency: {args.concurrency}")
     print(f"Number of Requests: {args.num_requests}")
     print(f"Short Clients: {args.short_clients}")
+    print(f"Short Clients Slo: {args.short_clients_slo}")
     print(f"Long Clients: {args.long_clients}")
+    print(f"Long Clients Slo: {args.long_clients_slo}")
     print(f"Sleep Time: {args.sleep} seconds")
     print(f"Local Port: {args.local_port}")
     print(f"Remote Port: {args.remote_port}")

@@ -78,14 +78,18 @@ class BaseExperiment:
         # 记录开始时间
         self.start_time = time.time()
         print(
-            f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")        # 创建工作线程
-        print(f"[Client {self.client_id}] Creating {self.qps} workers")
+            f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # 根据并发数创建workers
+        qps_per_worker = self.qps / self.concurrency
+        print(f"[Client {self.client_id}] Creating {self.concurrency} workers, each handling {qps_per_worker} QPS")
+        
         # Split formatted_json into equal chunks based on concurrency
-        chunk_size = len(self.formatted_json) // int(self.qps)
-        remaining = len(self.formatted_json) % int(self.qps)
+        chunk_size = len(self.formatted_json) // self.concurrency
+        remaining = len(self.formatted_json) % self.concurrency
         total_size = len(self.formatted_json)
 
-        for worker_id in range(int(self.qps)):
+        for worker_id in range(self.concurrency):
             # Randomly select a starting point
             start_idx = random.randint(0, total_size - chunk_size - (1 if remaining > 0 else 0))
             end_idx = start_idx + chunk_size + (1 if remaining > 0 else 0)
@@ -111,7 +115,7 @@ class BaseExperiment:
                     self.tokenizer,
                     self.request_timeout,
                     self.round_time,
-                    1,
+                    qps_per_worker,  # 每个worker处理相同比例的QPS
                     self.distribution,
                     worker_json,
                     self.config_round,
@@ -127,17 +131,17 @@ class BaseExperiment:
         # 等待所有工作线程完成
         print(f"[Client {self.client_id}] Waiting for all workers to complete")
         worker_results = await asyncio.gather(*workers)
-        num_requests, drift_time = zip(*worker_results)
+        completed_requests, drift_time, total_requests = zip(*worker_results)
 
         # 汇总结果
-        self.num_requests = sum(num_requests)
+        self.num_requests = sum(completed_requests)
         self.drift_time = sum(drift_time)
         print(f"[Client {self.client_id}] Total requests completed: {self.num_requests}")
 
         # 记录结束时间
         self.end_time = time.time()
         print(
-            f"[Client {self.client_id}] Benchmark ended at {self.end_time}, total time: {self.end_time - self.start_time:.2f}s")
+            f"[Client {self.client_id}] Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 计算指标
         return await self.calculate_results()

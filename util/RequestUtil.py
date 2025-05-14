@@ -1,5 +1,6 @@
 import asyncio
 import time
+from datetime import datetime
 
 import numpy as np
 import logging
@@ -58,9 +59,12 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
+    completed = 0
     tasks = []
+    task_status = {}  # 用于跟踪任务状态
 
     while time.time() - global_start_time < round_time:
+        current_time = time.time()
         # 计算当前请求的目标时间
         target_time = get_target_time(
             request_count=request_count,
@@ -74,49 +78,63 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         )
 
         # 如果目标时间已经过去，直接发送请求
-        if target_time <= time.time():
-            drift_time = target_time - time.time()
-            # while True:
-            #     request = random.choice(sample_content)
-            #     input_len = len(tokenizer(request, truncation=False, return_tensors="pt").input_ids[0])
-            #     if input_len <= 3000:
-            #         break
+        if target_time <= current_time:
+            drift_time = current_time - target_time
             request = random.choice(sample_content)
             selected_client = selected_clients[worker_id % len(selected_clients)]
 
             task = asyncio.create_task(
                 process_request(
-                    selected_client, output_tokens, request_timeout, [request],  # 注意这里改为单个请求的列表
+                    selected_client, output_tokens, request_timeout, request,
                     worker_id, tokenizer, results,
                     client_index, semaphore, config_round, latency_slo
                 )
             )
+            task_status[task] = {"start_time": time.time(), "status": "running"}
+            task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
             tasks.append(task)
             request_count += 1
         else:
             # 等待到目标时间
-            await asyncio.sleep(target_time - time.time())
+            sleep_time = target_time - current_time
+            if sleep_time > 0:  # 确保sleep时间是正数
+                sleep_start = time.time()
+                await asyncio.sleep(sleep_time)
+                if sleep_time > 2:
+                    sleep_end = time.time()
+                    print(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
+                          f"current_time: {current_time:.6f}, "
+                          f"sleep_time: {sleep_time:.6f}, "
+                          f"actual_sleep: {sleep_end - sleep_start:.6f}")
+            else:
+                print(f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
 
     # 等待所有任务完成
     if tasks:
-        await asyncio.gather(*tasks)
+        # gather_start = time.time()
+        # await asyncio.gather(*tasks)
+        # gather_end = time.time()
+        
+        # 统计任务状态
+        completed = sum(1 for status in task_status.values() if status["status"] == "completed")
+        # print(f"[Worker {worker_id}] gather took {gather_end - gather_start:.4f} seconds")
+        print(f"Total tasks: {request_count}, Completed: {completed}")
+        print(f"Task completion rate: {completed/len(tasks)*100:.2f}%")
 
-    return request_count, drift_time
+    return completed, drift_time, request_count
 
 
-async def process_request(client, output_tokens, request_timeout, batch_requests, worker_id, tokenizer,
+async def process_request(client, output_tokens, request_timeout, request, worker_id, tokenizer,
                           results, client_index, semaphore, config_round, latency_slo):
     async with semaphore:
-        request_count = len(batch_requests)
-        request_type = "requests" if request_count > 1 else "request"
-        for _, request in enumerate(batch_requests):
-            try:
-                result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
-                if result:
-                    results.append(result)
-            except Exception as e:
-                logging.error(
-                    f"Worker {worker_id} {config_round + 1} round with {request_count} {request_type} for client {client_index} raised an exception: {e}")
+        try:
+            result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
+            if result:
+                results.append(result)
+        except Exception as e:
+            logging.error(
+                f"Worker {worker_id} {config_round + 1} round for client {client_index} raised an exception: {e}")
+
 
 
 def calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution):

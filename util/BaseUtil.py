@@ -223,3 +223,5 @@ def selectClients_VTC(clients):
             return clients[j], clients[i]
         else:
             return None, None
+
+    return None, None
