@@ -119,30 +119,16 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
 
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio)
-    print(f"Request times: {request_times}")
     
     for target_time in request_times:
         if time.time() - global_start_time >= round_time:
             break
-            
         current_time = time.time()
         if target_time <= current_time:
+            # 如果目标时间已过，直接发送请求
             drift_time = current_time - target_time
-            request = random.choice(sample_content)
-            selected_client = selected_clients[worker_id % len(selected_clients)]
-
-            task = asyncio.create_task(
-                process_request(
-                    selected_client, output_tokens, request_timeout, request,
-                    worker_id, tokenizer, results,
-                    client_index, semaphore, config_round, latency_slo
-                )
-            )
-            task_status[task] = {"start_time": time.time(), "status": "running"}
-            task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
-            tasks.append(task)
-            request_count += 1
         else:
+            # 如果还没到目标时间，先sleep
             sleep_time = target_time - current_time
             if sleep_time > 0:
                 sleep_start = time.time()
@@ -155,6 +141,22 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                           f"actual_sleep: {sleep_end - sleep_start:.6f}")
             else:
                 print(f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
+                continue
+
+        # 发送请求（不管是否需要sleep，都会执行到这里）
+        request = random.choice(sample_content)
+        selected_client = selected_clients[worker_id % len(selected_clients)]
+        task = asyncio.create_task(
+            process_request(
+                selected_client, output_tokens, request_timeout, request,
+                worker_id, tokenizer, results,
+                client_index, semaphore, config_round, latency_slo
+            )
+        )
+        task_status[task] = {"start_time": time.time(), "status": "running"}
+        task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
+        tasks.append(task)
+        request_count += 1
 
     # 等待所有任务完成
     if tasks:

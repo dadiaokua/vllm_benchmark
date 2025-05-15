@@ -18,6 +18,6 @@ python3 run_benchmarks.py \
   --local_port 8080 \
   --remote_port 10028 \
   --use_time_data 0 \
-  --round 20 \
+  --round 10 \
   --round_time 60 \
   --exp LFS
