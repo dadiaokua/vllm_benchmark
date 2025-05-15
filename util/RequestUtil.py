@@ -52,32 +52,80 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
         return None
 
 
+def calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio):
+    """预先计算所有请求的时间点"""
+    if rate_lambda <= 0:
+        rate_lambda = 0.001
+
+    # 基础时间间隔
+    base_interval = 1 / rate_lambda
+    
+    # 估算总请求数
+    estimated_requests = int(round_time * rate_lambda)
+    
+    # 生成所有请求的时间点
+    request_times = []
+    current_time = time.time()
+    global_start_time = current_time
+    
+    # 先生成基础时间点
+    base_times = []
+    for i in range(estimated_requests):
+        if distribution.lower() == "poisson":
+            interval = float(np.random.exponential(base_interval))
+        elif distribution.lower() == "normal":
+            interval = base_interval + float(np.random.normal(0, base_interval * 0.1))
+        else:
+            interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
+            
+        request_time = current_time + interval
+        base_times.append(request_time)
+        current_time = request_time
+    
+    # 应用非线性映射
+    for base_time in base_times:
+        time_since_start = base_time - global_start_time
+        
+        if time_ratio > 1 and time_since_start <= round_time:
+            # 使用sigmoid类函数进行平滑映射
+            progress = time_since_start / round_time
+            # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
+            adjusted_progress = progress ** (1 / time_ratio)
+            adjusted_time_since_start = adjusted_progress * round_time
+        else:
+            # time_ratio <= 1的情况，直接线性缩放
+            adjusted_time_since_start = time_since_start * time_ratio
+            
+        # 确保调整后的时间不会超出原始窗口
+        if adjusted_time_since_start > round_time >= time_since_start:
+            adjusted_time_since_start = round_time
+            
+        adjusted_time = global_start_time + adjusted_time_since_start
+        request_times.append(adjusted_time)
+    
+    return request_times
+
+
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout,
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
                  use_time_data, latency_slo, time_ratio):
-    """每个task发送单个请求，使用get_target_time控制间隔"""
+    """每个task发送单个请求，使用预先计算的时间点控制间隔"""
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
     completed = 0
     tasks = []
-    task_status = {}  # 用于跟踪任务状态
+    task_status = {}
 
-    while time.time() - global_start_time < round_time:
+    # 预先计算所有请求的时间点
+    request_times = calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio)
+    print(f"Request times: {request_times}")
+    
+    for target_time in request_times:
+        if time.time() - global_start_time >= round_time:
+            break
+            
         current_time = time.time()
-        # 计算当前请求的目标时间
-        target_time = get_target_time(
-            request_count=request_count,
-            rate_lambda=rate_lambda,
-            global_start_time=global_start_time,
-            distribution=distribution,
-            use_time_data=use_time_data,
-            time_data=time_data,
-            time_ratio=time_ratio,
-            window_length=round_time
-        )
-
-        # 如果目标时间已经过去，直接发送请求
         if target_time <= current_time:
             drift_time = current_time - target_time
             request = random.choice(sample_content)
@@ -95,9 +143,8 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
             tasks.append(task)
             request_count += 1
         else:
-            # 等待到目标时间
             sleep_time = target_time - current_time
-            if sleep_time > 0:  # 确保sleep时间是正数
+            if sleep_time > 0:
                 sleep_start = time.time()
                 await asyncio.sleep(sleep_time)
                 if sleep_time > 2:
@@ -111,13 +158,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
 
     # 等待所有任务完成
     if tasks:
-        # gather_start = time.time()
-        # await asyncio.gather(*tasks)
-        # gather_end = time.time()
-        
-        # 统计任务状态
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
-        # print(f"[Worker {worker_id}] gather took {gather_end - gather_start:.4f} seconds")
         print(f"Total tasks: {request_count}, Completed: {completed}")
         print(f"Task completion rate: {completed/len(tasks)*100:.2f}%")
 
@@ -134,53 +175,3 @@ async def process_request(client, output_tokens, request_timeout, request, worke
         except Exception as e:
             logging.error(
                 f"Worker {worker_id} {config_round + 1} round for client {client_index} raised an exception: {e}")
-
-
-
-def calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution):
-    """计算基础请求时间，考虑 QPS 要求"""
-    if rate_lambda <= 0:
-        rate_lambda = 0.001
-
-    # 基础时间间隔
-    base_interval = 1 / rate_lambda
-
-    if distribution.lower() == "poisson":
-        # 泊松分布：使用指数分布生成间隔
-        interval = float(np.random.exponential(base_interval))
-    elif distribution.lower() == "normal":
-        # 正态分布：在基础间隔上添加小的随机波动
-        interval = base_interval + float(np.random.normal(0, base_interval * 0.1))
-    else:
-        # 均匀分布：在基础间隔上添加均匀随机波动
-        interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
-
-    # 直接返回下一个请求的时间点
-    return global_start_time + (request_count * interval)
-
-
-def get_target_time(request_count, rate_lambda, global_start_time, distribution, use_time_data, time_data, time_ratio,
-                    window_length):
-    """计算目标请求时间，只考虑 time_ratio 对间隔的影响"""
-    if use_time_data:
-        return time_data[request_count]
-
-    raw_time = calculate_raw_request_time(request_count, rate_lambda, global_start_time, distribution)
-    time_since_start = raw_time - global_start_time
-
-    # 使用非线性映射来避免在窗口末尾堆积请求
-    if time_ratio > 1 and time_since_start <= window_length:
-        # 使用sigmoid类函数进行平滑映射
-        progress = time_since_start / window_length
-        # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
-        adjusted_progress = progress ** (1 / time_ratio)
-        adjusted_time_since_start = adjusted_progress * window_length
-    else:
-        # time_ratio <= 1的情况，直接线性缩放
-        adjusted_time_since_start = time_since_start * time_ratio
-
-    # 确保调整后的时间不会超出原始窗口
-    if adjusted_time_since_start > window_length >= time_since_start:
-        adjusted_time_since_start = window_length
-
-    return global_start_time + adjusted_time_since_start
