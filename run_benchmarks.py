@@ -50,7 +50,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
-            qps=int(args.short_qps[0] if len(args.short_qps) == 1 else args.short_qps[index]),
+            qps=float(args.short_qps[0] if len(args.short_qps) == 1 else args.short_qps[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -77,7 +77,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
-            qps=int(args.long_qps[0] if len(args.long_qps) == 1 else args.long_qps[index]),
+            qps=float(args.long_qps[0] if len(args.long_qps) == 1 else args.long_qps[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
