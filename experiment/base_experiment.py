@@ -148,7 +148,7 @@ class BaseExperiment:
             f"[Client {self.client_id}] Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 计算指标
-        return await self.calculate_results(completed_requests / total_requests)
+        return await self.calculate_results(sum(completed_requests) / sum(total_requests))
 
     async def calculate_results(self, completed_requests_rate):
         """计算实验结果指标"""
