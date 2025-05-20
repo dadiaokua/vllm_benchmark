@@ -79,22 +79,26 @@ class BaseExperiment:
         self.start_time = time.time()
         print(
             f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         # 根据并发数创建workers
-        qps_per_worker = self.qps / self.concurrency
-        print(f"[Client {self.client_id}] Creating {self.concurrency} workers, each handling {qps_per_worker} QPS")
-        
+        if self.qps < self.concurrency:
+            worker_counts = 1
+        else:
+            worker_counts = self.concurrency
+        qps_per_worker = self.qps / worker_counts
+        print(f"[Client {self.client_id}] Creating {worker_counts} workers, each handling {qps_per_worker} QPS")
+
         # Split formatted_json into equal chunks based on concurrency
-        chunk_size = len(self.formatted_json) // self.concurrency
-        remaining = len(self.formatted_json) % self.concurrency
+        chunk_size = len(self.formatted_json) // worker_counts
+        remaining = len(self.formatted_json) % worker_counts
         total_size = len(self.formatted_json)
 
-        for worker_id in range(self.concurrency):
+        for worker_id in range(worker_counts):
             # Randomly select a starting point
             start_idx = random.randint(0, total_size - chunk_size - (1 if remaining > 0 else 0))
             end_idx = start_idx + chunk_size + (1 if remaining > 0 else 0)
             remaining = max(0, remaining - 1)  # Decrement remaining if needed
-            
+
             # Handle wrap-around case if end_idx exceeds list length
             if end_idx > total_size:
                 worker_json = self.formatted_json[start_idx:] + self.formatted_json[:end_idx - total_size]
@@ -108,7 +112,7 @@ class BaseExperiment:
             worker_task = asyncio.create_task(
                 worker(
                     self.openAI_client,
-                    semaphore, 
+                    semaphore,
                     self.results,
                     self.output_tokens,
                     self.client_id,
@@ -144,9 +148,9 @@ class BaseExperiment:
             f"[Client {self.client_id}] Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 计算指标
-        return await self.calculate_results()
+        return await self.calculate_results(completed_requests / total_requests)
 
-    async def calculate_results(self):
+    async def calculate_results(self, completed_requests_rate):
         """计算实验结果指标"""
         if not self.results or self.start_time is None or self.end_time is None:
             raise ValueError("Cannot calculate results: experiment has not been run")
@@ -170,6 +174,10 @@ class BaseExperiment:
         # 更新客户端的相关指标
         self.client.avg_latency_div_standard_latency = self.metrics['avg_latency_div_standard_latency']
         self.client.slo_violation_count = self.metrics['slo_violation_count']
+
+        # 如果成功率小于80%，则将QPS增加率设置为1
+        if completed_requests_rate < 0.8:
+            self.client.qps_ratio = 1
 
         return self.metrics
 
