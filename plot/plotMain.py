@@ -123,7 +123,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
         os.makedirs('figure')
 
     # 保存图片
-    fig2.savefig('figure/averaged_results' + filename.split('.')[0] + '.png', dpi=300, bbox_inches='tight')
+    fig2.savefig('figure/system_results' + filename.split('.')[0] + '.png', dpi=300, bbox_inches='tight')
     plt.show()
     return time_xLabel
 
@@ -228,7 +228,7 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     # 3. credit值
     plot_client_metric(axs2[2], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "credit",
-                       "Clients Credit", legend_handles, legend_labels)
+                       "Clients Credit", legend_handles, legend_labels, ylim=(-10, 10))
 
     # 在性能指标图底部添加共享图例
     fig1.legend(handles=legend_handles, labels=legend_labels,
@@ -343,16 +343,29 @@ def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm
         except (StopIteration, KeyError, ZeroDivisionError) as e:
             print(f"Warning: Error processing {client} for {metric_key}: {e}")
 
+    print(f"[DEBUG] {metric_key} all_values: {all_values}")
+
     # 如果没有提供ylim且有足够的值，则自动计算合适的范围
     if ylim is None and all_values:
         try:
-            min_val = min(v for v in all_values if v is not None)
-            max_val = max(v for v in all_values if v is not None)
-            margin = (max_val - min_val) * 0.1
-            computed_ylim = (max(0, min_val - margin), max_val + margin)
-            if metric_key == "success_rate":
-                computed_ylim = (max(0, min_val - 5), 105)
-        except (ValueError, TypeError):
+            # 过滤掉None值
+            valid_values = [v for v in all_values if v is not None]
+            if valid_values:  # 确保有有效值
+                min_val = min(valid_values)
+                max_val = max(valid_values)
+                # 增加最小margin，避免y轴范围过小
+                margin = max((max_val - min_val) * 0.1, 1.0)
+                if min_val < 0:
+                    computed_ylim = (min_val - margin, max_val + margin)
+                else:
+                    computed_ylim = (max(0, min_val - margin), max_val + margin)
+                # 特殊处理 success_rate
+                if metric_key == "success_rate":
+                    computed_ylim = (max(0, min_val - 5), 105)
+            else:
+                computed_ylim = None  # 如果没有有效值，设置为None
+        except (ValueError, TypeError) as e:
+            print(f"Warning: Error computing ylim for {metric_key}: {e}")
             computed_ylim = None
     else:
         computed_ylim = ylim
