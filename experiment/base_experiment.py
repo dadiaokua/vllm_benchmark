@@ -163,7 +163,8 @@ class BaseExperiment:
             self.output_tokens,
             self.latency_slo,
             self.client.fairness_ratio,
-            self.drift_time
+            self.drift_time,
+            self.client.credit
         )
 
         # 更新客户端的相关指标

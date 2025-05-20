@@ -181,7 +181,7 @@ def calculate_percentile(values, percentile, reverse=False):
 
 
 def calculate_metrics(concurrency, request_timeout, client_id, results, start_time, end_time, num_requests, qps,
-                      output_tokens, latency_slo, fairness_ratio, drift_time):
+                      output_tokens, latency_slo, fairness_ratio, drift_time, credit):
     # Calculate metrics
     total_elapsed_time = end_time - start_time
     total_tokens = sum(tokens for tokens, _, _, _, _, _ in results if tokens is not None)
@@ -206,6 +206,7 @@ def calculate_metrics(concurrency, request_timeout, client_id, results, start_ti
     ttft_percentiles = [calculate_percentile(ttft_list, p) for p in percentiles]
 
     return {
+        "credit": credit,
         "drift_time": drift_time,
         "latency_slo": latency_slo,
         "slo_violation_count": slo_violation_count,

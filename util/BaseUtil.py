@@ -67,12 +67,13 @@ def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, cl
 
     # 准备交换记录
     exchange_record = {
+        "round": len(client_low_fairness_ratio.results),
         "timestamp": datetime.now().strftime("%m_%d_%H_%M_%S"),
         "client1_id": client_low_fairness_ratio.client_id if hasattr(client_low_fairness_ratio, 'client_id') else str(client_low_fairness_ratio),
         "client2_id": client_high_fairness_ratio.client_id if hasattr(client_high_fairness_ratio, 'client_id') else str(client_high_fairness_ratio),
         "gap_fairness_ratio": f"abs({client_low_fairness_ratio.fairness_ratio} - {client_high_fairness_ratio.fairness_ratio}) = {abs(client_low_fairness_ratio.fairness_ratio - client_high_fairness_ratio.fairness_ratio)}",
         "delta": delta,
-        "client1_new_active_ratio": client_low_fairness_ratio.active_ratio,
+        "client1_new_time_ratio": client_low_fairness_ratio.time_ratio,
         "client1_new_credit": client_low_fairness_ratio.credit,
         "client2_new_credit": client_high_fairness_ratio.credit,
         "clients_info": clients_info

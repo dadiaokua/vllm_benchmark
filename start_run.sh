@@ -4,10 +4,10 @@ python3 run_benchmarks.py \
   --vllm_url http://222.201.144.119:8000/v1 \
   --api_key http://222.201.144.120:8000/v1 \
   --request_timeout 10 \
-  --short_qps 10 \
+  --short_qps 3 \
   --short_client_qps_ratio 1 \
-  --long_qps 10 \
-  --long_client_qps_ratio 1.2 \
+  --long_qps 3 \
+  --long_client_qps_ratio 1 \
   --distribution normal \
   --concurrency 1 \
   --short_clients 3 \

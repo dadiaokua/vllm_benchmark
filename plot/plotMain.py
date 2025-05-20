@@ -19,7 +19,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
 
     # 添加标题显示参数
     fig2.suptitle(
-        f"{exp_type} Averaged Benchmark Results - Short Client: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+        f"{exp_type} System Benchmark Results - Short Client: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
         fontsize=16, y=0.98)
 
     # 合并所有结果
@@ -49,23 +49,29 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
         qps.append(all_results[0][i]["qps"] * len(all_results))
         concurrency.append(all_results[0][i]["concurrency"])
 
-        tokens_count = [result[i]['total_output_tokens'] + result[i]['total_input_tokens'] for result in all_results]
-        total_output_tokens = [result[i]['total_output_tokens'] for result in all_results]
-        total_input_tokens = [result[i]['total_input_tokens'] for result in all_results]
-        success_rate = [result[i]['successful_requests'] * 100 / result[i]['total_requests'] for result in all_results]
-        tokens_per_second = [result[i]["tokens_per_second"]["p99"] for result in all_results]
-        latency = [result[i]["latency"]["p99"] for result in all_results]
-        ttft = [result[i]["time_to_first_token"]["p99"] for result in all_results]
-        rps = [result[i]["requests_per_second"] for result in all_results]
+        # 计算总和而不是平均值
+        tokens_count = sum(result[i]['total_output_tokens'] + result[i]['total_input_tokens'] for result in all_results)
+        total_output_tokens = sum(result[i]['total_output_tokens'] for result in all_results)
+        total_input_tokens = sum(result[i]['total_input_tokens'] for result in all_results)
+        # 成功请求数总和
+        successful_requests = sum(result[i]['successful_requests'] for result in all_results)
+        total_requests = sum(result[i]['total_requests'] for result in all_results)
+        success_rate = successful_requests * 100 / total_requests if total_requests > 0 else 0
+        # 取所有客户端中最大的延迟作为系统延迟
+        tokens_per_second = max(result[i]["tokens_per_second"]["p99"] for result in all_results)
+        latency = max(result[i]["latency"]["p99"] for result in all_results)
+        ttft = max(result[i]["time_to_first_token"]["p99"] for result in all_results)
+        # 总RPS是所有客户端RPS之和
+        rps = sum(result[i]["requests_per_second"] for result in all_results)
 
-        avg_tokens_count.append(sum(tokens_count) / len(tokens_count))
-        avg_total_output_tokens.append(sum(total_output_tokens) / len(total_output_tokens))
-        avg_total_input_tokens.append(sum(total_input_tokens) / len(total_input_tokens))
-        avg_success_rate.append(sum(success_rate) / len(success_rate))
-        avg_tokens_per_second.append(sum(tokens_per_second) / len(tokens_per_second))
-        avg_latency.append(sum(latency) / len(latency))
-        avg_ttft.append(sum(ttft) / len(ttft))
-        avg_rps.append(sum(rps) / len(rps))
+        avg_tokens_count.append(tokens_count)
+        avg_total_output_tokens.append(total_output_tokens)
+        avg_total_input_tokens.append(total_input_tokens)
+        avg_success_rate.append(success_rate)
+        avg_tokens_per_second.append(tokens_per_second)
+        avg_latency.append(latency)
+        avg_ttft.append(ttft)
+        avg_rps.append(rps)
 
     time_xLabel = xLabel_time(time)
 
@@ -127,13 +133,18 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     """
     绘制综合性能图表，包括各客户端指标和公平性结果
     """
-    # 创建一个4×2的子图布局,宽高比更大
-    fig, axs = plt.subplots(5, 2, figsize=(28, 25))
-    axs = axs.flatten()  # 将2D数组展平为1D，便于索引
+    # 创建两个图：性能指标图和公平性指标图
+    fig1, axs1 = plt.subplots(4, 2, figsize=(28, 25))  # 性能指标图
+    fig2, axs2 = plt.subplots(3, 1, figsize=(28, 18))   # 公平性指标图，改为2行1列
+    axs1 = axs1.flatten()  # 将2D数组展平为1D，便于索引
+    axs2 = axs2.flatten()
 
     # 添加标题显示参数
-    fig.suptitle(
-        f"{exp_type} Benchmark Results - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+    fig1.suptitle(
+        f"{exp_type} Performance Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+        fontsize=16, y=0.98)
+    fig2.suptitle(
+        f"{exp_type} Fairness Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
         fontsize=16, y=0.98)
 
     # 获取所有客户端
@@ -157,83 +168,88 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     legend_handles = []
     legend_labels = []
 
-    # 绘制各个客户端的指标
+    # 绘制性能指标
     # 1. 成功率
-    plot_client_metric(axs[0], sorted_all_results, short_clients, long_clients,
+    plot_client_metric(axs1[0], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "success_rate",
                        "Success Rate (%)", legend_handles, legend_labels)
 
     # 2. 每秒令牌数
-    plot_client_metric(axs[1], sorted_all_results, short_clients, long_clients,
+    plot_client_metric(axs1[1], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "tokens_per_second",
                        "Tokens/s", legend_handles, legend_labels)
 
     # 3. 延迟
-    plot_client_metric(axs[2], sorted_all_results, short_clients, long_clients,
+    plot_client_metric(axs1[2], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "latency",
                        "Latency (ms)", legend_handles, legend_labels)
 
     # 4. 首个令牌时间
-    plot_client_metric(axs[3], sorted_all_results, short_clients, long_clients,
+    plot_client_metric(axs1[3], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "time_to_first_token",
                        "Time to First Token (ms)", legend_handles, legend_labels)
 
     # 5. 每秒请求数
-    plot_client_metric(axs[4], sorted_all_results, short_clients, long_clients,
+    plot_client_metric(axs1[4], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "requests_per_second",
                        "Requests per Second", legend_handles, legend_labels)
 
-    # 提取 f_result 值
-    f_values = [result['f_result'] for result in fairness_results]
-    times = list(range(len(f_values)))  # 使用 f_values 的长度来生成时间点
-
-    print(f"Debug - times length: {len(times)}, content: {times}")
-    print(f"Debug - f_values length: {len(f_values)}, content: {f_values}")
-
-    # 6. Fairness Ratio
-    plot_client_metric(axs[5], sorted_all_results, short_clients, long_clients,
-                       warm_colors, cool_colors, "fairness_ratio",
-                       "Fairness Ratio", legend_handles, legend_labels)
-
-    # 7. 每个客户端的服务使用量
-    plot_client_metric(axs[6], sorted_all_results, short_clients, long_clients,
+    # 6. 每个客户端的服务使用量
+    plot_client_metric(axs1[5], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "service",
                        "Service Usage", legend_handles, legend_labels)
 
-    plot_client_metric(axs[7], sorted_all_results, short_clients, long_clients,
+    # 7. 成功请求数
+    plot_client_metric(axs1[6], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "successful_requests",
                        "Successful Requests", legend_handles, legend_labels)
 
-    plot_client_metric(axs[8], sorted_all_results, short_clients, long_clients,
+    # 8. 违反SLO的请求数量
+    plot_client_metric(axs1[7], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "slo_violation_count",
                        "Slo Violation Request Numbers", legend_handles, legend_labels)
 
-    # 8. Jain's公平性指数放在最后
-    if len(times) == len(f_values):  # 添加长度检查
-        plot_fairness_index(axs[9], f_values, times)
+    # 绘制公平性指标
+    # 1. Fairness Ratio
+    plot_client_metric(axs2[0], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "fairness_ratio",
+                       "Fairness Ratio", legend_handles, legend_labels)
+
+    # 2. Jain's公平性指数
+    f_values = [result['f_result'] for result in fairness_results]
+    times = list(range(len(f_values)))
+    if len(times) == len(f_values):
+        plot_fairness_index(axs2[1], f_values, times)
     else:
         print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
-        # 可以选择使用较短的长度
         min_len = min(len(times), len(f_values))
-        plot_fairness_index(axs[9], f_values[:min_len], times[:min_len])
+        plot_fairness_index(axs2[1], f_values[:min_len], times[:min_len])
+    
+    # 3. credit值
+    plot_client_metric(axs2[2], sorted_all_results, short_clients, long_clients,
+                       warm_colors, cool_colors, "credit",
+                       "Clients Credit", legend_handles, legend_labels)
 
-    # 在图形底部添加共享图例
-    fig.legend(handles=legend_handles, labels=legend_labels,
+    # 在性能指标图底部添加共享图例
+    fig1.legend(handles=legend_handles, labels=legend_labels,
                loc='center', bbox_to_anchor=(0.5, 0.02),
                ncol=len(short_clients) + len(long_clients),
                fontsize=10)
 
     # 优化布局
-    fig.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
+    fig1.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
+    fig2.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
     # 调整子图间距，为底部图例留出空间
-    fig.subplots_adjust(top=0.92, bottom=0.1)
+    fig1.subplots_adjust(top=0.92, bottom=0.1)
+    fig2.subplots_adjust(top=0.92, bottom=0.1)
 
     # 创建figure文件夹（如果不存在）
     if not os.path.exists('figure'):
         os.makedirs('figure')
 
     # 保存图表
-    fig.savefig(f'figure/comprehensive_results{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
+    fig1.savefig(f'figure/performance_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
+    fig2.savefig(f'figure/fairness_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
 
     plt.show()
 

@@ -65,11 +65,11 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
     
     # 生成所有请求的时间点
     request_times = []
-    current_time = time.time()
-    global_start_time = current_time
+    global_start_time = time.time()  # 使用当前时间作为全局开始时间
     
-    # 先生成基础时间点
+    # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
+    current_offset = 0
     for i in range(estimated_requests):
         if distribution.lower() == "poisson":
             interval = float(np.random.exponential(base_interval))
@@ -78,30 +78,30 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
         else:
             interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
             
-        request_time = current_time + interval
-        base_times.append(request_time)
-        current_time = request_time
+        current_offset += interval
+        if current_offset > round_time:  # 确保不超出round_time
+            break
+        base_times.append(current_offset)
     
     # 应用非线性映射
-    for base_time in base_times:
-        time_since_start = base_time - global_start_time
-        
-        if time_ratio > 1 and time_since_start <= round_time:
+    for base_offset in base_times:
+        if time_ratio > 1 and base_offset <= round_time:
             # 使用sigmoid类函数进行平滑映射
-            progress = time_since_start / round_time
+            progress = base_offset / round_time
             # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
             adjusted_progress = progress ** (1 / time_ratio)
-            adjusted_time_since_start = adjusted_progress * round_time
+            adjusted_offset = adjusted_progress * round_time
         else:
             # time_ratio <= 1的情况，直接线性缩放
-            adjusted_time_since_start = time_since_start * time_ratio
+            adjusted_offset = base_offset * time_ratio
             
         # 确保调整后的时间不会超出原始窗口
-        if adjusted_time_since_start > round_time >= time_since_start:
-            adjusted_time_since_start = round_time
+        if adjusted_offset > round_time:
+            adjusted_offset = round_time
             
-        adjusted_time = global_start_time + adjusted_time_since_start
-        request_times.append(adjusted_time)
+        # 将偏移转换为绝对时间
+        request_time = global_start_time + adjusted_offset
+        request_times.append(request_time)
     
     return request_times
 
@@ -136,8 +136,8 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                 if sleep_time > 2:
                     sleep_end = time.time()
                     print(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
-                          f"current_time: {current_time:.6f}, "
-                          f"sleep_time: {sleep_time:.6f}, "
+                          f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
+                          f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
                           f"actual_sleep: {sleep_end - sleep_start:.6f}")
             else:
                 print(f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
