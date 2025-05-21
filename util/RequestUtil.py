@@ -158,9 +158,10 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         tasks.append(task)
         request_count += 1
 
-    if time.time() - global_start_time < round_time:
-        await asyncio.sleep(round_time - (time.time() - global_start_time))
-        print(f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {round_time - (time.time() - global_start_time):.2f} seconds")
+    remaining_time = round_time - (time.time() - global_start_time)
+    if remaining_time > 0:
+        await asyncio.sleep(remaining_time)
+        print(f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
 
     # 等待所有任务完成
     if tasks:
