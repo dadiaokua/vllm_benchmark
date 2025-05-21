@@ -67,7 +67,7 @@ def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, cl
 
     # 准备交换记录
     exchange_record = {
-        "round": len(client_low_fairness_ratio.results),
+        "round": len(client_low_fairness_ratio.experiment_results),
         "timestamp": datetime.now().strftime("%m_%d_%H_%M_%S"),
         "client1_id": client_low_fairness_ratio.client_id if hasattr(client_low_fairness_ratio, 'client_id') else str(client_low_fairness_ratio),
         "client2_id": client_high_fairness_ratio.client_id if hasattr(client_high_fairness_ratio, 'client_id') else str(client_high_fairness_ratio),
@@ -103,8 +103,8 @@ def get_average_success_rate(clients):
     """计算系统平均成功率"""
     success_rates = []
     for client in clients:
-        if client.results:
-            rate = client.results[-1]['successful_requests'] / client.results[-1]['total_requests']
+        if client.experiment_results:
+            rate = client.experiment_results[-1]['successful_requests'] / client.experiment_results[-1]['total_requests']
             success_rates.append(rate)
 
     if not success_rates:

@@ -93,7 +93,10 @@ class BenchmarkClient:
 
 
             # Store and update results
-            self.results.append(result)
+            if result:
+                self.results.append(result)
+            else:
+                self.results.append(self.results[-1])
             await self.result_queue.put(1)
 
             self.results[-1]["fairness_ratio"] = self.fairness_ratio

@@ -74,7 +74,7 @@ async def fairness_result(clients, exp_type):
 
     for client in clients:
         # Get latest results
-        latest_result = client.results[-1]
+        latest_result = client.experiment_results[-1]
 
         # Calculate service value
         service_value = calculate_service_value(
@@ -97,7 +97,7 @@ async def fairness_result(clients, exp_type):
     # Calculate fairness ratios in one pass
     alpha = GLOBAL_CONFIG['alpha']
     for client in clients:
-        slo_violation_ratio = client.slo_violation_count / client.results[-1]['total_requests']
+        slo_violation_ratio = client.slo_violation_count / client.experiment_results[-1]['total_requests']
         service_ratio = client.service / max_service
         client.fairness_ratio = service_ratio * (1 - alpha) + alpha * slo_violation_ratio
 

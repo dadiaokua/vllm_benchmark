@@ -59,14 +59,14 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
 
     # 基础时间间隔
     base_interval = 1 / rate_lambda
-    
+
     # 估算总请求数
     estimated_requests = int(round_time * rate_lambda)
-    
+
     # 生成所有请求的时间点
     request_times = []
     global_start_time = time.time()  # 使用当前时间作为全局开始时间
-    
+
     # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
     current_offset = 0
@@ -77,12 +77,12 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
             interval = base_interval + float(np.random.normal(0, base_interval * 0.1))
         else:
             interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
-            
+
         current_offset += interval
         if current_offset > round_time:  # 确保不超出round_time
             break
         base_times.append(current_offset)
-    
+
     # 应用非线性映射
     for base_offset in base_times:
         if time_ratio > 1 and base_offset <= round_time:
@@ -94,15 +94,15 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
         else:
             # time_ratio <= 1的情况，直接线性缩放
             adjusted_offset = base_offset * time_ratio
-            
+
         # 确保调整后的时间不会超出原始窗口
         if adjusted_offset > round_time:
             adjusted_offset = round_time
-            
+
         # 将偏移转换为绝对时间
         request_time = global_start_time + adjusted_offset
         request_times.append(request_time)
-    
+
     return request_times
 
 
@@ -119,7 +119,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
 
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio)
-    
+
     for target_time in request_times:
         if time.time() - global_start_time >= round_time:
             break
@@ -158,11 +158,14 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
         tasks.append(task)
         request_count += 1
 
+    if time.time() - global_start_time < round_time:
+        await asyncio.sleep(round_time - (time.time() - global_start_time))
+
     # 等待所有任务完成
     if tasks:
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         print(f"Total tasks: {request_count}, Completed: {completed}")
-        print(f"Task completion rate: {completed/len(tasks)*100:.2f}%")
+        print(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
 
     return completed, drift_time, request_count
 

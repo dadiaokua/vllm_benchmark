@@ -51,7 +51,7 @@ class BaseExperiment:
         self.drift_time = 0
 
         # 实验结果
-        self.results = []
+        self.experiment_results = []
         self.start_time = None
         self.end_time = None
         self.num_requests = 0
@@ -72,7 +72,7 @@ class BaseExperiment:
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
-        self.results = []
+        self.experiment_results = []
         workers = []
 
         # 记录开始时间
@@ -113,7 +113,7 @@ class BaseExperiment:
                 worker(
                     self.openAI_client,
                     semaphore,
-                    self.results,
+                    self.experiment_results,
                     self.output_tokens,
                     self.client_id,
                     self.tokenizer,
@@ -152,14 +152,15 @@ class BaseExperiment:
 
     async def calculate_results(self, completed_requests_rate):
         """计算实验结果指标"""
-        if not self.results or self.start_time is None or self.end_time is None:
-            raise ValueError("Cannot calculate results: experiment has not been run")
+        if not self.experiment_results or self.start_time is None or self.end_time is None:
+            print("Cannot calculate results: experiment has not been run")
+            return None
 
         self.metrics = calculate_metrics(
             self.concurrency,
             self.request_timeout,
             self.client_id,
-            self.results,
+            self.experiment_results,
             self.start_time,
             self.end_time,
             self.num_requests,
