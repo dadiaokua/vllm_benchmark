@@ -1,97 +1,117 @@
 import json
 import os
 import time
+import logging
 
 
-def save_results(exchange_count, f_result, s_result, RESULTS_FILE):
+def save_results(exchange_count, f_result, s_result, RESULTS_FILE, logger=None):
     """将公平性结果追加写入 JSON 文件"""
-    # Get current time and format it as YYYY-MM-DD HH:MM:SS (24-hour format)
-    current_time_struct = time.localtime()
-    formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", current_time_struct)
-
+    # 获取当前时间
+    formatted_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     new_entry = {
         "f_result": f_result,
         "s_result": s_result,
-        "time": formatted_time,  # Use formatted time string
+        "time": formatted_time,
         "exchange_count": exchange_count
     }
 
-    data = []
-    # Ensure the directory exists if RESULTS_FILE includes a path
-    results_dir = os.path.dirname(RESULTS_FILE)
-    if results_dir:
-        os.makedirs(results_dir, exist_ok=True)
-
-    # 读取现有数据 (Robust reading)
-    try:
-        # Check if file exists and is not empty
-        if os.path.exists(RESULTS_FILE) and os.path.getsize(RESULTS_FILE) > 0:
+    # 读取原有内容并追加
+    if os.path.exists(RESULTS_FILE) and os.path.getsize(RESULTS_FILE) > 0:
+        try:
             with open(RESULTS_FILE, "r", encoding='utf-8') as f:
                 data = json.load(f)
-                # Ensure data is a list, otherwise start fresh
                 if not isinstance(data, list):
-                    print(f"Warning: Content of {RESULTS_FILE} is not a list. Initializing a new list.")
+                    if logger:
+                        logger.warning(f"Content of {RESULTS_FILE} is not a list. Initializing a new list.")
+                    else:
+                        print(f"Warning: Content of {RESULTS_FILE} is not a list. Initializing a new list.")
                     data = []
-        # If file doesn't exist or is empty, data remains []
-    except json.JSONDecodeError:
-        print(f"Warning: Could not decode JSON from {RESULTS_FILE}. Initializing a new list.")
-        data = [] # Reset data to empty list if decoding fails
-    except IOError as e:
-        print(f"Error reading file {RESULTS_FILE}: {e}. Initializing a new list.")
-        data = [] # Reset data if reading fails
+        except Exception as e:
+            if logger:
+                logger.warning(f"Could not decode JSON from {RESULTS_FILE}: {e}. Initializing a new list.")
+            else:
+                print(f"Warning: Could not decode JSON from {RESULTS_FILE}: {e}. Initializing a new list.")
+            data = []
+    else:
+        data = []
 
-    # 追加新数据
     data.append(new_entry)
+    save_json(data, RESULTS_FILE, logger=logger)
 
-    # **写回文件**
+
+def save_json(data, filepath, mode='w', indent=2, logger=None):
+    """
+    通用的JSON保存函数。
+    - data: 要保存的数据
+    - filepath: 文件路径
+    - mode: 写入模式，'w'覆盖，'a'追加
+    - indent: JSON缩进
+    - logger: 可选日志记录器
+    """
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
     try:
-        with open(RESULTS_FILE, "w", encoding='utf-8') as f:
-            json.dump(data, f, indent=4, ensure_ascii=False) # ensure_ascii=False for non-ASCII chars if any
-    except IOError as e:
-        print(f"Error writing results to {RESULTS_FILE}: {e}")
-        return # Exit if writing fails
-
-    print(f"结果已写入 {RESULTS_FILE}: {new_entry}")
-
-
-def save_benchmark_results(filename, benchmark_results, plot_data):
-    """Save benchmark results to files"""
-    os.makedirs("results", exist_ok=True)
-    print(f"Saving benchmark results to: results/{filename}")
-
-    with open("results/" + filename, 'w') as f:
-        json.dump(benchmark_results, f, indent=2)
-
-    with open("tmp_result/plot_data.json", "w") as f:
-        json.dump(plot_data, f, indent=4)
-
-
-def save_exchange_record(record, filepath):
-    """Save exchange record to file"""
-
-    # Create tmp_result directory if it doesn't exist
-    if not os.path.exists('tmp_result'):
-        os.makedirs('tmp_result')
-
-    try:
-        # Read existing records
-        if os.path.exists(filepath):
-            with open(filepath, 'r') as f:
-                records = json.load(f)
+        if mode == 'a' and os.path.exists(filepath):
+            # 追加模式下，先读取原有内容
+            with open(filepath, 'r', encoding='utf-8') as f:
+                try:
+                    existing = json.load(f)
+                except Exception:
+                    existing = []
+            if isinstance(existing, list) and isinstance(data, list):
+                data = existing + data
+            elif isinstance(existing, list):
+                data = existing + [data]
+            else:
+                # 其他情况直接覆盖
+                pass
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=indent)
+        if logger:
+            logger.info(f"Saved data to {filepath}")
         else:
-            records = []
-
-        # Append new record
-        records.append(record)
-
-        # Write back to file
-        with open(filepath, 'w') as f:
-            json.dump(records, f, indent=2)
-
+            print(f"Saved data to {filepath}")
     except Exception as e:
-        print(f"Error saving exchange record: {e}")
+        msg = f"Error saving data to {filepath}: {e}"
+        if logger:
+            logger.error(msg)
+        else:
+            print(msg)
 
 
-def save_to_file(filename, data):
-    with open(filename, 'a', encoding='utf-8') as f:
-        f.write(data + "\n")
+def save_benchmark_results(filename, benchmark_results, plot_data, logger=None):
+    """保存基准测试结果和绘图数据"""
+    save_json(benchmark_results, os.path.join("results", filename), logger=logger)
+    save_json(plot_data, "tmp_result/plot_data.json", logger=logger)
+
+
+def save_exchange_record(record, filepath, logger=None):
+    """保存交换记录到文件（以列表形式追加）"""
+    # 读取原有内容并追加
+    if os.path.exists(filepath):
+        with open(filepath, 'r', encoding='utf-8') as f:
+            try:
+                records = json.load(f)
+            except Exception:
+                records = []
+    else:
+        records = []
+    records.append(record)
+    save_json(records, filepath, logger=logger)
+
+
+def save_to_file(filename, data, logger=None):
+    """以文本方式追加保存"""
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    try:
+        with open(filename, 'a', encoding='utf-8') as f:
+            f.write(data + "\n")
+        if logger:
+            logger.info(f"Appended data to {filename}")
+        else:
+            print(f"Appended data to {filename}")
+    except Exception as e:
+        msg = f"Error appending data to {filename}: {e}"
+        if logger:
+            logger.error(msg)
+        else:
+            print(msg)

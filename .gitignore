@@ -10,3 +10,4 @@ figure/*
 prompt_hub/long_prompts.json
 prompt_hub/short_prompts.json
 time_log/
+log/

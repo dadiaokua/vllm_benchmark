@@ -49,7 +49,7 @@ def calculate_Jains_index(clients, exp_type):
         # Define the log directory and file path
         LOG_DIR = "tmp_result"
         LOG_FILE = os.path.join(LOG_DIR,
-                                f"{exp_type}_jains_index_calculation_log_{GLOBAL_CONFIG['monitor_file_time']}.txt")
+                                f"{exp_type}_jains_index_calculation_log_{GLOBAL_CONFIG['monitor_file_time']}.log")
 
         # Ensure the log directory exists
         os.makedirs(LOG_DIR, exist_ok=True)
@@ -152,24 +152,24 @@ async def is_fairness_VTC(clients, exp_type):
     return count
 
 
-async def is_fairness_DLPM(clients, exp_type):
-    if len(clients) < 2:
-        print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
-        return
-    iteration = 0
-    count = 0
-    while iteration < (len(clients) / 2):
-        print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) / 2}")
-        clients.sort(key=lambda client: client.service)
-        client1, client2 = selectClients_VTC(clients)
-        if client1 is not None and client2 is not None:
-            exchange_resources(client1, client2, clients, exp_type)
-            count += 1
-        else:
-            break
-        iteration += 1
+async def is_fairness_FCFS(clients, exp_type):
+    # if len(clients) < 2:
+    #     print("[Fairness] Not enough clients for fairness calculation (minimum 2 required)")
+    #     return
+    # iteration = 0
+    # count = 0
+    # while iteration < (len(clients) / 2):
+    #     print(f"[Fairness] Starting iteration {iteration + 1}/{len(clients) / 2}")
+    #     clients.sort(key=lambda client: client.service)
+    #     client1, client2 = selectClients_VTC(clients)
+    #     if client1 is not None and client2 is not None:
+    #         exchange_resources(client1, client2, clients, exp_type)
+    #         count += 1
+    #     else:
+    #         break
+    #     iteration += 1
 
-    return count
+    return 0
 
 
 def calculate_percentile(values, percentile, reverse=False):

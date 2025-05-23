@@ -13,6 +13,7 @@ from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
 from util.JsonFormatterUtil import prepare_benchmark_data, make_prefix_list
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
+import logging
 
 
 async def setup_benchmark_tasks(args, all_results, request_queue):
@@ -108,8 +109,30 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
 
     return tasks, monitor_task, clients
 
+def setup_logger():
+    # 日志文件夹和文件名
+    log_dir = "log"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, "run_benchmarks.log")
 
-async def main():
+    # 设置全局logger
+    logger = logging.getLogger("run_benchmarks")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        fh = logging.FileHandler(log_file, encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        # 控制台输出
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+        
+    return logger
+
+def parse_args(logger):
     parser = argparse.ArgumentParser(description="Run vLLM benchmarks with various configurations")
     parser.add_argument("--vllm_url", type=str, nargs='+', required=True,
                         help="URLs of the vLLM servers (can provide multiple)",
@@ -142,40 +165,84 @@ async def main():
     parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4")
 
     args = parser.parse_args()
+    return args
 
-    print("\nBenchmark Configuration:")
-    print("------------------------")
-    print(f"vLLM Server URL: {args.vllm_url}")
-    print(f"Use Tunnel: {args.use_tunnel}")
-    print(f"Distribution: {args.distribution}")
-    print(f"Short QPS: {args.short_qps}")
-    print(f"Short Client QPS Ratio: {args.short_client_qps_ratio}")
-    print(f"Long QPS: {args.long_qps}")
-    print(f"Long Client QPS Ratio: {args.long_client_qps_ratio}")
-    print(f"Concurrency: {args.concurrency}")
-    print(f"Number of Requests: {args.num_requests}")
-    print(f"Short Clients: {args.short_clients}")
-    print(f"Short Clients Slo: {args.short_clients_slo}")
-    print(f"Long Clients: {args.long_clients}")
-    print(f"Long Clients Slo: {args.long_clients_slo}")
-    print(f"Sleep Time: {args.sleep} seconds")
-    print(f"Local Port: {args.local_port}")
-    print(f"Remote Port: {args.remote_port}")
-    print(f"Use Time Data: {args.use_time_data}")
-    print(f"Request Timeout: {args.request_timeout} seconds")
-    print(f"Round: {args.round}")
-    print(f"Round Time: {args.round_time} seconds")
-    print(f"Experiment Type: {args.exp}")
-    print(f"Tokenizer Local Path: {args.tokenizer}")
-    print("------------------------\n")
-    GLOBAL_CONFIG['round_time'] = args.round_time
-    if args.use_tunnel:
-        servers = setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
-    else:
-        servers = []
+def print_benchmark_config(args, logger):
+    logger.info("\nBenchmark Configuration:")
+    logger.info("------------------------")
+    for k, v in vars(args).items():
+        logger.info(f"{k}: {v}")
+    logger.info("------------------------\n")
 
+def setup_servers_if_needed(args):
+    if getattr(args, "use_tunnel", 0):
+        return setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
+    return []
+
+def prepare_results_file():
     with open(RESULTS_FILE, "w") as f:
         json.dump([], f)
+
+async def run_benchmark_tasks(tasks, logger):
+    benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)
+    try:
+        await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
+    except asyncio.TimeoutError:
+        logger.error(f"Tasks did not complete within {benchmark_timeout} seconds, cancelling...")
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+def process_and_save_results(tasks, start_time, args, logger):
+    all_benchmark_results = []
+    for task in tasks[1:]:
+        if task.done():
+            result = task.result()
+            if result:
+                all_benchmark_results.append(result)
+
+    benchmark_results = all_benchmark_results
+    end_time = time.time()
+    total_time = end_time - start_time
+    logger.info(f"Total time: {total_time:.2f} seconds")
+
+    start_datetime = datetime.fromtimestamp(start_time)
+    end_datetime = datetime.fromtimestamp(end_time)
+    filename = (
+        f"{args.exp}_{start_datetime.strftime('%m%d_%H-%M')}_to_{end_datetime.strftime('%H-%M')}.json"
+    ).replace(" ", "_").replace(":", "-").replace("/", "-")
+
+    args_dict = vars(args)
+    plot_data = {
+        "filename": filename,
+        "total_time": round(total_time, 2),
+    }
+    plot_data.update(args_dict)
+    save_benchmark_results(filename, benchmark_results, plot_data, logger)
+    return benchmark_results, total_time, filename, plot_data
+
+async def cancel_monitor_task(monitor_task, logger):
+    monitor_task.cancel()
+    try:
+        await monitor_task
+    except asyncio.CancelledError:
+        logger.info("Monitor task cancelled.")
+
+async def main():
+    logger = setup_logger()
+    args = parse_args(logger)
+    print_benchmark_config(args, logger)
+    GLOBAL_CONFIG['round_time'] = args.round_time
+
+    servers = setup_servers_if_needed(args)
+    prepare_results_file()
 
     all_results = asyncio.Queue()
     request_queue = asyncio.Queue()
@@ -184,66 +251,18 @@ async def main():
     tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue)
 
     try:
-        benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)
-        await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
-
-    except asyncio.TimeoutError:
-        print(f"Tasks did not complete within {benchmark_timeout} seconds, cancelling...")
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await run_benchmark_tasks(tasks, logger)
     except Exception as e:
-        print(f"An error occurred: {e}")
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        logger.error(f"Benchmark failed: {e}")
 
-    all_benchmark_results = []
-    for task in tasks[1:]:
-        if task.done():
-            result = task.result()
-            if result:
-                all_benchmark_results.append(result)
-
-    tasks[0].done()  # 取消monitor_task
-
-    benchmark_results = all_benchmark_results
-
-    end_time = time.time()
-    total_time = end_time - start_time
-    print(f"Total time: {total_time:.2f} seconds")
-
-    start_datetime = datetime.fromtimestamp(start_time)
-    end_datetime = datetime.fromtimestamp(end_time)
-
-    # Create a more descriptive filename with date, time, and benchmark parameters
-    filename = (
-        f"{args.exp}_{start_datetime.strftime('%m%d_%H-%M')}_to_{end_datetime.strftime('%H-%M')}.json"
+    benchmark_results, total_time, filename, plot_data = process_and_save_results(
+        tasks, start_time, args, logger
     )
-    filename = filename.replace(" ", "_").replace(":", "-").replace("/", "-")
-
-    # 将args转为dict
-    args_dict = vars(args)
-
-    plot_data = {
-        "filename": filename,
-        "total_time": round(total_time, 2),
-    }
-    plot_data.update(args_dict)  # 直接合并所有参数到plot_data
-
-    save_benchmark_results(filename, benchmark_results, plot_data)
 
     for server in servers:
         stop_tunnel(server)
 
-    monitor_task.cancel()
-    try:
-        await monitor_task
-    except asyncio.CancelledError:
-        print("Monitor task cancelled.")
-
+    await cancel_monitor_task(monitor_task, logger)
     plot_result(plot_data)
 
 

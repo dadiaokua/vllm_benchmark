@@ -1,10 +1,12 @@
 import asyncio
+import logging
+import os
 import random
 
 from config.Config import GLOBAL_CONFIG
 from experiment.base_experiment import BaseExperiment
 
-from experiment.DLPM_experiment import DLPMExperiment
+from experiment.FCFS_experiment import FCFSExperiment
 from experiment.LFS_experiment import LFSExperiment
 from experiment.VTC_experiment import VTCExperiment
 
@@ -74,6 +76,31 @@ class BenchmarkClient:
         self.experiment_config = None
         self.experiment = None
 
+        # 设置logger（只设置一次，防止重复handler）
+        self.logger = self._setup_logger()
+
+    def _setup_logger(self):
+        # 日志文件夹和文件名
+        log_dir = "log"
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"client_{self.client_id}_run.log")
+
+        logger = logging.getLogger(f"client_{self.client_id}")
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            fh = logging.FileHandler(log_file, encoding="utf-8")
+            fh.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+            # 控制台输出
+            ch = logging.StreamHandler()
+            ch.setLevel(logging.INFO)
+            ch.setFormatter(formatter)
+            logger.addHandler(ch)
+
+        return logger
+
     async def run_all_benchmarks(self):
         """Run all benchmark configurations for this client"""
         print(f"Starting benchmarks for client {self.client_id} with {self.round} configurations")
@@ -133,12 +160,12 @@ class BenchmarkClient:
             "baseline": BaseExperiment,
             "LFS": LFSExperiment,
             "VTC": VTCExperiment,
-            "DLPM": DLPMExperiment
+            "FCFS": FCFSExperiment
         }
 
         # 创建并运行实验
         experiment_class = experiment_types.get(self.exp_type, BaseExperiment)
-        self.experiment = experiment_class(self, self.experiment_config)
+        self.experiment = experiment_class(self)
         await self.experiment.setup()
         result = await self.experiment.run()
 

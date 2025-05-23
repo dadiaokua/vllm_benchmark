@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import subprocess
 import os
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ from functools import wraps
 
 from config.Config import GLOBAL_CONFIG
 from util.FileSaveUtil import save_results
-from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, is_fairness_DLPM
+from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, is_fairness_FCFS
 
 RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
 
@@ -86,12 +87,11 @@ class ExperimentMonitor:
         self.fairness_strategies = {
             "LFS": is_fairness_LFSLLM,
             "VTC": is_fairness_VTC,
-            "DLPM": is_fairness_DLPM
+            "FCFS": is_fairness_FCFS
         }
 
     def _setup_logger(self):
         """设置日志记录器"""
-        import logging
         logger = logging.getLogger(f"ExperimentMonitor-{self.exp_type}")
         
         # 确保日志记录器没有被重复配置
@@ -103,7 +103,7 @@ class ExperimentMonitor:
             ch.setLevel(logging.INFO)
             
             # 创建文件处理器
-            fh = logging.FileHandler(f'tmp_result/monitor_{self.exp_type}.log')
+            fh = logging.FileHandler(f'log/monitor_{self.exp_type}.log')
             fh.setLevel(logging.INFO)
             
             # 创建格式化器
@@ -213,9 +213,9 @@ class ExperimentMonitor:
                 self.logger.info("Skipping fairness adjustment (disabled in config)")
             
             # 保存结果
-            print(f"Saving results... {f_result}, {s_result}, {exchange_count}")
+            self.logger.info(f"Saving results... {f_result}, {s_result}, {exchange_count}")
             self._save_results(f_result, s_result, exchange_count)
-            print("Results saved successfully")
+            self.logger.info("Results saved successfully")
             
             # 重置客户端
             await self._reset_clients()
@@ -227,7 +227,7 @@ class ExperimentMonitor:
             self._print_timing_stats()
             
         except Exception as e:
-            self.logger.error(f"Error in _process_complete_round: {str(e)}")
+            self.logger.error(f"Error in _process_complete_round: {str(e)}", exc_info=True)
             raise
 
     @timing_decorator
@@ -256,7 +256,7 @@ class ExperimentMonitor:
     def _save_results(self, f_result, s_result, exchange_count):
         """保存结果到文件"""
         try:
-            print("Starting to save results...")
+            self.logger.info("Starting to save results...")
             results_file = self.config.get('RESULTS_FILE', RESULTS_FILE)
 
             # 确保结果文件存在
@@ -266,11 +266,10 @@ class ExperimentMonitor:
             save_results(exchange_count, f_result, s_result, results_file)
             self.fairness_results.append((f_result, s_result))
             
-            print(f"Results saved to {results_file}: {f_result}, {s_result}")
+            self.logger.info(f"Results saved to {results_file}: {f_result}, {s_result}")
             return True
         except Exception as e:
-            print(f"Error saving results: {str(e)}")
-            print(f"Detailed error information: {e}")
+            self.logger.error(f"Error saving results: {str(e)}", exc_info=True)
             raise
 
     @timing_decorator
@@ -286,7 +285,6 @@ class ExperimentMonitor:
     def _print_timing_stats(self):
         """打印时间统计信息并保存到文件"""
         # 创建time_log目录
-        import os
         if not os.path.exists('time_log'):
             os.makedirs('time_log')
 
@@ -314,5 +312,5 @@ class ExperimentMonitor:
         with open(filename, 'w', encoding='utf-8') as f:
             f.write('\n'.join(output))
 
-        # 同时打印到控制台
-        print('\n'.join(output))
+        # 同时写入日志
+        self.logger.info('\n'.join(output))

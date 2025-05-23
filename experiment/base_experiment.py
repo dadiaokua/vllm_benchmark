@@ -3,6 +3,8 @@ import random
 import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+import os
+import logging
 
 from util.JsonFormatterUtil import make_prefix_list
 from util.MathUtil import calculate_metrics
@@ -15,7 +17,7 @@ class BaseExperiment:
     负责设置、运行和收集实验结果
     """
 
-    def __init__(self, client, config):
+    def __init__(self, client):
         """
         初始化基准测试实验
 
@@ -24,7 +26,8 @@ class BaseExperiment:
             config: 实验配置参数
         """
         self.client = client
-        self.config = config
+        self.config = client.experiment_config
+        self.logger = client.logger
 
         # 从客户端获取必要的属性
         self.client_id = client.client_id
@@ -39,10 +42,10 @@ class BaseExperiment:
         self.use_time_data = client.use_time_data
 
         # 实验特定参数
-        self.output_tokens = config.get('output_tokens', 200)
-        self.qps = config.get('qps', 1)
-        self.config_round = config.get('config_round', 1)
-        self.latency_slo = config.get('latency_slo', 10)
+        self.output_tokens = self.config.get('output_tokens', 200)
+        self.qps = self.config.get('qps', 1)
+        self.config_round = self.config.get('config_round', 1)
+        self.latency_slo = self.config.get('latency_slo', 10)
         self.active_ratio = client.active_ratio
         self.time_ratio = client.time_ratio
 
@@ -67,8 +70,8 @@ class BaseExperiment:
 
     async def run(self):
         """运行实验并收集结果"""
-        print(
-            f"[Client {self.client_id}] Starting benchmark run with QPS={self.qps}, output_tokens={self.output_tokens}")
+
+        self.logger.info(f"Starting benchmark run with QPS={self.qps}, output_tokens={self.output_tokens}")
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -77,8 +80,7 @@ class BaseExperiment:
 
         # 记录开始时间
         self.start_time = time.time()
-        print(
-            f"[Client {self.client_id}] Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 根据并发数创建workers
         if self.qps < self.concurrency:
@@ -86,7 +88,7 @@ class BaseExperiment:
         else:
             worker_counts = self.concurrency
         qps_per_worker = self.qps / worker_counts
-        print(f"[Client {self.client_id}] Creating {worker_counts} workers, each handling {qps_per_worker} QPS")
+        self.logger.info(f"Creating {worker_counts} workers, each handling {qps_per_worker} QPS")
 
         # Split formatted_json into equal chunks based on concurrency
         chunk_size = len(self.formatted_json) // worker_counts
@@ -104,10 +106,10 @@ class BaseExperiment:
                 worker_json = self.formatted_json[start_idx:] + self.formatted_json[:end_idx - total_size]
             else:
                 worker_json = self.formatted_json[start_idx:end_idx]
-            if self.exp_type == "DLPM":
-                worker_json = make_prefix_list(worker_json, self.tokenizer, 200 if "short" in self.client_id else 1000)
-            else:
-                random.shuffle(worker_json)
+            # if self.exp_type == "DLPM":
+            #     worker_json = make_prefix_list(worker_json, self.tokenizer, 200 if "short" in self.client_id else 1000)
+            # else:
+            #     random.shuffle(worker_json)
 
             worker_task = asyncio.create_task(
                 worker(
@@ -119,33 +121,33 @@ class BaseExperiment:
                     self.tokenizer,
                     self.request_timeout,
                     self.round_time,
-                    qps_per_worker,  # 每个worker处理相同比例的QPS
+                    qps_per_worker,
                     self.distribution,
-                    worker_json,
+                    random.shuffle(worker_json),
                     self.config_round,
                     worker_id,
                     self.time_data,
                     self.use_time_data,
                     self.latency_slo,
-                    self.time_ratio
+                    self.time_ratio,
+                    self.logger
                 )
             )
             workers.append(worker_task)
 
-        # 等待所有工作线程完成
-        print(f"[Client {self.client_id}] Waiting for all workers to complete")
+        self.logger.info("Waiting for all workers to complete")
         worker_results = await asyncio.gather(*workers)
         completed_requests, drift_time, total_requests = zip(*worker_results)
 
         # 汇总结果
         self.num_requests = sum(completed_requests)
         self.drift_time = sum(drift_time)
-        print(f"[Client {self.client_id}] Total requests completed: {self.num_requests}")
+        self.logger.info(f"Total requests completed: {self.num_requests}")
 
         # 记录结束时间
         self.end_time = time.time()
-        print(
-            f"[Client {self.client_id}] Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
+        self.logger.info(
+            f"Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 计算指标
         return await self.calculate_results(sum(completed_requests) / sum(total_requests))

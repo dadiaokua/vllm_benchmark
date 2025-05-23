@@ -23,11 +23,9 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo):
+async def make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo, logger):
     start_time = time.time()
-
     try:
-        logging.getLogger("openai").setLevel(logging.ERROR)
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model="llama_8b",
@@ -45,10 +43,10 @@ async def make_request(client, output_tokens, request_timeout, request, tokenize
             input_token), 1 if elapsed_time <= latency_slo else 0
 
     except asyncio.TimeoutError:
-        logging.warning(f"Request timed out after {request_timeout} seconds")
+        logger.warning(f"Request timed out after {request_timeout} seconds")
         return None
     except Exception as e:
-        logging.error(f"Error during request: {str(e)}")
+        logger.error(f"Error during request: {str(e)}")
         return None
 
 
@@ -108,7 +106,7 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
 
 async def worker(selected_clients, semaphore, results, output_tokens, client_index, tokenizer, request_timeout,
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
-                 use_time_data, latency_slo, time_ratio):
+                 use_time_data, latency_slo, time_ratio, logger):
     """每个task发送单个请求，使用预先计算的时间点控制间隔"""
     global_start_time = time.time()
     request_count = 0
@@ -135,12 +133,12 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                 await asyncio.sleep(sleep_time)
                 if sleep_time > 2:
                     sleep_end = time.time()
-                    print(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
-                          f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
-                          f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
-                          f"actual_sleep: {sleep_end - sleep_start:.6f}")
+                    logger.info(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
+                                f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
+                                f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
+                                f"actual_sleep: {sleep_end - sleep_start:.6f}")
             else:
-                print(f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
+                logger.warning(f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
                 continue
 
         # 发送请求（不管是否需要sleep，都会执行到这里）
@@ -150,7 +148,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
             process_request(
                 selected_client, output_tokens, request_timeout, request,
                 worker_id, tokenizer, results,
-                client_index, semaphore, config_round, latency_slo
+                client_index, semaphore, config_round, latency_slo, logger
             )
         )
         task_status[task] = {"start_time": time.time(), "status": "running"}
@@ -161,22 +159,23 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     remaining_time = round_time - (time.time() - global_start_time)
     if remaining_time > 0:
         await asyncio.sleep(remaining_time)
-        print(f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
+        logger.warning(
+            f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
 
     # 等待所有任务完成
     if tasks:
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
-        print(f"Total tasks: {request_count}, Completed: {completed}")
-        print(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        logger.info(f"Total tasks: {request_count}, Completed: {completed}")
+        logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
 
     return completed, drift_time, request_count
 
 
 async def process_request(client, output_tokens, request_timeout, request, worker_id, tokenizer,
-                          results, client_index, semaphore, config_round, latency_slo):
+                          results, client_index, semaphore, config_round, latency_slo, logger):
     async with semaphore:
         try:
-            result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo)
+            result = await make_request(client, output_tokens, request_timeout, request, tokenizer, latency_slo, logger)
             if result:
                 results.append(result)
         except Exception as e:

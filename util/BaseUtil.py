@@ -35,7 +35,7 @@ def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, cl
     # 1. 计算调整量
     if exp_type == "LFS":
         delta = calculate_adjustment_delta_lfs(client_low_fairness_ratio, client_high_fairness_ratio)
-    elif exp_type == "VTC" or exp_type == "DLPM":
+    elif exp_type == "VTC" or exp_type == "FCFS":
         delta = calculate_adjustment_delta_vtc(client_low_fairness_ratio, client_high_fairness_ratio)
     else:
         print(f"Invalid experiment type: {exp_type}")
