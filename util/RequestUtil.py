@@ -168,7 +168,7 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
     # 等待所有任务完成
     if tasks:
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
-        logger.info(f"Total tasks: {request_count}, Completed: {completed}")
+        logger.info(f"Total tasks: {request_count}, Completed: {completed}, Success: {len(results)}")
         logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
 
     return completed, drift_time, request_count

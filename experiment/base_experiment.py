@@ -68,12 +68,12 @@ class BaseExperiment:
             f"[Client {self.client_id}] Experiment setup complete: {self.qps} workers with {1} QPS per worker")
         return self
 
-    async def run(self):
+    async def run(self, config_round):
         """运行实验并收集结果"""
 
-        self.logger.info(f"Starting benchmark run with QPS={self.qps}, output_tokens={self.output_tokens}")
+        self.logger.info(f"Starting benchmark round {config_round} run with QPS={self.qps}, output_tokens={self.output_tokens}")
         self.logger.info(f"Client ID: {self.client_id}, Concurrency: {self.concurrency}")
-        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}")
+        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}, QPS ratio: {self.client.qps_ratio}")
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -198,6 +198,8 @@ class BaseExperiment:
         # 如果成功率小于80%，则将QPS增加率设置为1
         if completed_requests_rate < 0.8:
             self.client.qps_ratio = 1
+        else:
+            self.client.qps_ratio = 1.5
 
         return self.metrics
 

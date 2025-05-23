@@ -167,7 +167,7 @@ class BenchmarkClient:
         experiment_class = experiment_types.get(self.exp_type, BaseExperiment)
         self.experiment = experiment_class(self)
         await self.experiment.setup()
-        result = await self.experiment.run()
+        result = await self.experiment.run(config_round)
 
         return result
 
