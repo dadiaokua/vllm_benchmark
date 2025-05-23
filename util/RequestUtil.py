@@ -108,6 +108,9 @@ async def worker(selected_clients, semaphore, results, output_tokens, client_ind
                  round_time, rate_lambda, distribution, sample_content, config_round, worker_id, time_data,
                  use_time_data, latency_slo, time_ratio, logger):
     """每个task发送单个请求，使用预先计算的时间点控制间隔"""
+    assert sample_content is not None, "sample_content is None!"
+    assert isinstance(sample_content, list), f"sample_content is not a list! type={type(sample_content)}"
+    assert len(sample_content) > 0, "sample_content is empty!"
     global_start_time = time.time()
     request_count = 0
     drift_time = 0

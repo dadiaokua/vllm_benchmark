@@ -72,6 +72,8 @@ class BaseExperiment:
         """运行实验并收集结果"""
 
         self.logger.info(f"Starting benchmark run with QPS={self.qps}, output_tokens={self.output_tokens}")
+        self.logger.info(f"Client ID: {self.client_id}, Concurrency: {self.concurrency}")
+        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}")
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -89,11 +91,13 @@ class BaseExperiment:
             worker_counts = self.concurrency
         qps_per_worker = self.qps / worker_counts
         self.logger.info(f"Creating {worker_counts} workers, each handling {qps_per_worker} QPS")
+        self.logger.info(f"Total formatted JSON size: {len(self.formatted_json)}")
 
         # Split formatted_json into equal chunks based on concurrency
         chunk_size = len(self.formatted_json) // worker_counts
         remaining = len(self.formatted_json) % worker_counts
         total_size = len(self.formatted_json)
+        self.logger.info(f"Chunk size: {chunk_size}, Remaining: {remaining}")
 
         for worker_id in range(worker_counts):
             # Randomly select a starting point
@@ -101,15 +105,28 @@ class BaseExperiment:
             end_idx = start_idx + chunk_size + (1 if remaining > 0 else 0)
             remaining = max(0, remaining - 1)  # Decrement remaining if needed
 
+            self.logger.debug(f"Worker {worker_id}: start_idx={start_idx}, end_idx={end_idx}")
+
             # Handle wrap-around case if end_idx exceeds list length
             if end_idx > total_size:
                 worker_json = self.formatted_json[start_idx:] + self.formatted_json[:end_idx - total_size]
+                self.logger.debug(f"Worker {worker_id}: wrap-around case, json size={len(worker_json)}")
             else:
                 worker_json = self.formatted_json[start_idx:end_idx]
+                self.logger.debug(f"Worker {worker_id}: normal case, json size={len(worker_json)}")
             # if self.exp_type == "DLPM":
             #     worker_json = make_prefix_list(worker_json, self.tokenizer, 200 if "short" in self.client_id else 1000)
             # else:
             #     random.shuffle(worker_json)
+
+            if worker_json is None:
+                raise ValueError(f"sample_content is None! client_index={self.client_id}, worker_id={worker_id}")
+            if not isinstance(worker_json, list):
+                raise TypeError(f"sample_content is not a list! type={type(worker_json)}")
+            if len(worker_json) == 0:
+                raise ValueError(f"sample_content is empty! client_index={self.client_id}, worker_id={worker_id}")
+            
+            random.shuffle(worker_json)
 
             worker_task = asyncio.create_task(
                 worker(
@@ -123,7 +140,7 @@ class BaseExperiment:
                     self.round_time,
                     qps_per_worker,
                     self.distribution,
-                    random.shuffle(worker_json),
+                    worker_json,
                     self.config_round,
                     worker_id,
                     self.time_data,
