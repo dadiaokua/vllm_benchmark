@@ -130,24 +130,13 @@ class BaseExperiment:
 
             worker_task = asyncio.create_task(
                 worker(
+                    self,
                     self.openAI_client,
                     semaphore,
                     self.experiment_results,
-                    self.output_tokens,
-                    self.client_id,
-                    self.tokenizer,
-                    self.request_timeout,
-                    self.round_time,
-                    qps_per_worker,
-                    self.distribution,
-                    worker_json,
-                    self.config_round,
                     worker_id,
-                    self.time_data,
-                    self.use_time_data,
-                    self.latency_slo,
-                    self.time_ratio,
-                    self.logger
+                    worker_json,
+                    qps_per_worker
                 )
             )
             workers.append(worker_task)
@@ -159,7 +148,7 @@ class BaseExperiment:
         # 汇总结果
         self.num_requests = sum(completed_requests)
         self.drift_time = sum(drift_time)
-        self.logger.info(f"Total requests completed: {self.num_requests}")
+        self.logger.info(f"Total requests succeeded: {self.num_requests}")
 
         # 记录结束时间
         self.end_time = time.time()
