@@ -28,7 +28,7 @@ async def make_request(client, experiment, request):
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
-            model="llama_8b",
+            model=GLOBAL_CONFIG['request_model_name'],
             messages=[{"role": "user", "content": request}],
             max_tokens=experiment.output_tokens,
             stream=True

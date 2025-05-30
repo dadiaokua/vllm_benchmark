@@ -163,7 +163,7 @@ def parse_args(logger):
                         required=True)
     parser.add_argument("--exp", type=str, help="Experiment type", required=True, default="LFS")
     parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4")
-
+    parser.add_argument("--request_model_name", type=str, help="Request model name", default="Meta-Llama-3.1-8B-Instruct-AWQ-INT4", required=True)
     args = parser.parse_args()
     return args
 
@@ -178,6 +178,10 @@ def setup_servers_if_needed(args):
     if getattr(args, "use_tunnel", 0):
         return setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
     return []
+
+def setup_request_model_name(args):
+    if args.request_model_name:
+        GLOBAL_CONFIG['request_model_name'] = args.request_model_name
 
 def prepare_results_file():
     with open(RESULTS_FILE, "w") as f:
@@ -242,6 +246,7 @@ async def main():
     GLOBAL_CONFIG['round_time'] = args.round_time
 
     servers = setup_servers_if_needed(args)
+    setup_request_model_name(args)
     prepare_results_file()
 
     all_results = asyncio.Queue()

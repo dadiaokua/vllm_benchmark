@@ -16,4 +16,5 @@ GLOBAL_CONFIG = {
     "avg_success_rate": 0.9,
     "max_exchange_times": 1,
     "prompt_max_len": 4096,
+    "request_model_name": "",
 }
