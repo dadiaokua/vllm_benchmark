@@ -83,7 +83,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     plot_metrics_with_annotations(axs2[0], range(len(qps)), avg_total_input_tokens, 'total_input_tokens',
                                   colors[2], markers[2], linestyle=line_styles[2])
     setup_subplot(axs2[0],
-                  "Average Input and Output Tokens",
+                  "Sum Input and Output Tokens",
                   time_xLabel,
                   plt.FuncFormatter(lambda x, p: format(int(x), ',')))
 
@@ -99,7 +99,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     plot_metrics_with_annotations(axs2[2], range(len(qps)), avg_tokens_per_second, 'tokens_per_second',
                                   colors[4], markers[4], xytext=(0, -15), linestyle=line_styles[0])
     setup_subplot(axs2[2],
-                  "Average Tokens/s",
+                  "Sum Tokens/s",
                   time_xLabel)
 
     # Plot latency metrics
@@ -110,7 +110,7 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     plot_metrics_with_annotations(axs2[3], range(len(qps)), avg_rps, 'requests_per_second',
                                   colors[2], markers[2], xytext=(15, 0), linestyle=line_styles[2])
     setup_subplot(axs2[3],
-                  "Average Latency Metrics",
+                  "Max Latency and TTFT, Sum RPS Metrics",
                   time_xLabel)
 
     # 优化布局
