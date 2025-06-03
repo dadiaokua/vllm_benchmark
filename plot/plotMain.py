@@ -57,8 +57,8 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
         successful_requests = sum(result[i]['successful_requests'] for result in all_results)
         total_requests = sum(result[i]['total_requests'] for result in all_results)
         success_rate = successful_requests * 100 / total_requests if total_requests > 0 else 0
-        # 取所有客户端中最大的延迟作为系统延迟
-        tokens_per_second = max(result[i]["tokens_per_second"]["p99"] for result in all_results)
+        # 取所有客户端延迟的和作为系统延迟
+        tokens_per_second = sum(result[i]["tokens_per_second"]["p99"] for result in all_results)
         latency = max(result[i]["latency"]["p99"] for result in all_results)
         ttft = max(result[i]["time_to_first_token"]["p99"] for result in all_results)
         # 总RPS是所有客户端RPS之和
