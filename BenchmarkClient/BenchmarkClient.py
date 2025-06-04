@@ -14,9 +14,9 @@ from experiment.VTC_experiment import VTCExperiment
 class BenchmarkClient:
     """Class representing a benchmark client with its configurations and state"""
 
-    def __init__(self, client_type, client_index, qps, port, api_key, tokenizer, exp_type,
+    def __init__(self, client_type, client_index, qpm, port, api_key, tokenizer, exp_type,
                  distribution, request_timeout, concurrency, round, round_time, sleep, time_data,
-                 result_queue, formatted_json, OpenAI_client, qps_ratio, latency_slo, use_time_data=0):
+                 result_queue, formatted_json, OpenAI_client, qpm_ratio, latency_slo, use_time_data=0):
         """Initialize a benchmark client
 
         Args:
@@ -38,8 +38,8 @@ class BenchmarkClient:
         self.client_type = client_type
         self.client_index = client_index
         self.client_id = f"{client_type}_{client_index}"
-        self.qps = qps
-        self.qps_ratio = qps_ratio
+        self.qpm = qpm
+        self.qpm_ratio = qpm_ratio
         self.port = port
         self.api_key = api_key
         self.distribution = distribution
@@ -107,9 +107,9 @@ class BenchmarkClient:
 
         for i in range(self.round):
             # Run benchmark with current configuration
-            self.qps = self.qps * self.qps_ratio
-            print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qps}")
-            result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qps, i, self.latency_slo)
+            self.qpm = self.qpm * self.qpm_ratio
+            print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
+            result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
 
             if i != 0:
                 # 等待 monitor 通知处理完成
@@ -135,13 +135,13 @@ class BenchmarkClient:
 
         return self.results
 
-    async def run_benchmark(self, output_tokens, qps, config_round, latency_slo):
+    async def run_benchmark(self, output_tokens, qpm, config_round, latency_slo):
         """
         运行基准测试实验
 
         Args:
             output_tokens: 每个请求的输出令牌数
-            qps: 每秒查询数
+            qpm: 每秒查询数
             config_round: 配置轮次
             latency_slo: 延迟服务水平目标
 
@@ -151,7 +151,7 @@ class BenchmarkClient:
 
         self.experiment_config = {
             'output_tokens': output_tokens,
-            'qps': qps,
+            'qpm': qpm,
             'config_round': config_round,
             'latency_slo': latency_slo
         }

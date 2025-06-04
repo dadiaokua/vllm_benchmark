@@ -38,11 +38,11 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
 
     openAI_client = initialize_clients(args.local_port)
 
-    if len(args.short_qps) != 1 and len(args.short_qps) != args.short_clients:
+    if len(args.short_qpm) != 1 and len(args.short_qpm) != args.short_clients:
         print("short_qps must be a single value or a list of values equal to the number of short clients")
         return None, None, None
     
-    if len(args.long_qps) != 1 and len(args.long_qps) != args.long_clients:
+    if len(args.long_qpm) != 1 and len(args.long_qpm) != args.long_clients:
         print("long_qps must be a single value or a list of values equal to the number of long clients")
         return None, None, None 
 
@@ -51,7 +51,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
-            qps=float(args.short_qps[0] if len(args.short_qps) == 1 else args.short_qps[index]),
+            qpm=float(args.short_qpm[0] if len(args.short_qpm) == 1 else args.short_qpm[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -67,7 +67,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             time_data=None,
             round=args.round,
             exp_type=args.exp,
-            qps_ratio=args.short_client_qps_ratio,
+            qpm_ratio=args.short_client_qpm_ratio,
             latency_slo=int(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index])
         )
         clients.append(client)
@@ -78,7 +78,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
-            qps=float(args.long_qps[0] if len(args.long_qps) == 1 else args.long_qps[index]),
+            qpm=float(args.long_qpm[0] if len(args.long_qpm) == 1 else args.long_qpm[index]),
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -94,7 +94,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             time_data=None,
             round=args.round,
             exp_type=args.exp,
-            qps_ratio=args.long_client_qps_ratio,
+            qpm_ratio=args.long_client_qpm_ratio,
             latency_slo=int(args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index])
         )
         clients.append(client)
@@ -140,11 +140,11 @@ def parse_args(logger):
     parser.add_argument("--use_tunnel", type=int, default=1)
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
     parser.add_argument("--distribution", type=str, help="Distribution of request")
-    parser.add_argument("--short_qps", type=str, nargs='+', help="Qps of short client request", required=True, default=1.0)
-    parser.add_argument("--short_client_qps_ratio", type=float, required=True, help="Qps ratio of short client",
+    parser.add_argument("--short_qpm", type=str, nargs='+', help="Qps of short client request", required=True, default=1.0)
+    parser.add_argument("--short_client_qpm_ratio", type=float, required=True, help="Qps ratio of short client",
                         default=1)
-    parser.add_argument("--long_qps", type=str, nargs='+', help="Qps of long client request", required=True, default=1.0)
-    parser.add_argument("--long_client_qps_ratio", type=float, required=True, help="Qps ratio of long client",
+    parser.add_argument("--long_qpm", type=str, nargs='+', help="Qps of long client request", required=True, default=1.0)
+    parser.add_argument("--long_client_qpm_ratio", type=float, required=True, help="Qps ratio of long client",
                         default=1)
     parser.add_argument("--concurrency", type=int, help="concurrency", default=50)
     parser.add_argument("--num_requests", type=int, help="Number of requests", default=1000)

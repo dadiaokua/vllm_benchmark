@@ -51,15 +51,29 @@ async def make_request(client, experiment, request):
 
 
 def calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio):
-    """预先计算所有请求的时间点"""
-    if rate_lambda <= 0:
-        rate_lambda = 0.001
+    """
+    预先计算所有请求的时间点
+    
+    Args:
+        rate_lambda: 每分钟发送的请求数量
+        round_time: 测试轮次时间（秒）
+        distribution: 分布类型
+        time_ratio: 时间比例
+    
+    Returns:
+        list: 请求时间点列表
+    """
+    # 将每分钟请求数转换为每秒请求数
+    rate_per_second = rate_lambda / 60.0
+    
+    if rate_per_second <= 0:
+        rate_per_second = 0.001
 
     # 基础时间间隔
-    base_interval = 1 / rate_lambda
+    base_interval = 1 / rate_per_second
 
     # 估算总请求数
-    estimated_requests = int(round_time * rate_lambda)
+    estimated_requests = int(round_time * rate_per_second)
 
     # 生成所有请求的时间点
     request_times = []
@@ -104,7 +118,7 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
     return request_times
 
 
-async def worker(experiment, selected_clients, semaphore, results, worker_id, worker_json, qps_per_worker):
+async def worker(experiment, selected_clients, semaphore, results, worker_id, worker_json, qpm_per_worker):
     """每个task发送单个请求，使用预先计算的时间点控制间隔"""
     assert worker_json is not None, "sample_content is None!"
     assert isinstance(worker_json, list), f"sample_content is not a list! type={type(worker_json)}"
@@ -117,7 +131,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     task_status = {}
 
     # 预先计算所有请求的时间点
-    request_times = calculate_all_request_times(qps_per_worker, experiment.round_time, experiment.distribution,
+    request_times = calculate_all_request_times(qpm_per_worker, experiment.round_time, experiment.distribution,
                                                 experiment.time_ratio)
 
     for target_time in request_times:

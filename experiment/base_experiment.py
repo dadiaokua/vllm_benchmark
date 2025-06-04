@@ -43,7 +43,7 @@ class BaseExperiment:
 
         # 实验特定参数
         self.output_tokens = self.config.get('output_tokens', 200)
-        self.qps = self.config.get('qps', 1)
+        self.qpm = self.config.get('qpm', 1)
         self.config_round = self.config.get('config_round', 1)
         self.latency_slo = self.config.get('latency_slo', 10)
         self.active_ratio = client.active_ratio
@@ -65,15 +65,15 @@ class BaseExperiment:
         assert self.openAI_client is not None, "OpenAI Client must not be None"
 
         print(
-            f"[Client {self.client_id}] Experiment setup complete: {self.qps} workers with {1} QPS per worker")
+            f"[Client {self.client_id}] Experiment setup complete: {self.qpm} workers with {1} QPS per worker")
         return self
 
     async def run(self, config_round):
         """运行实验并收集结果"""
 
-        self.logger.info(f"Starting benchmark round {config_round} run with QPS={self.qps}, output_tokens={self.output_tokens}")
+        self.logger.info(f"Starting benchmark round {config_round} run with QPS={self.qpm}, output_tokens={self.output_tokens}")
         self.logger.info(f"Client ID: {self.client_id}, Concurrency: {self.concurrency}")
-        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}, QPS ratio: {self.client.qps_ratio}")
+        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}, QPS ratio: {self.client.qpm_ratio}")
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -85,12 +85,12 @@ class BaseExperiment:
         self.logger.info(f"Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 根据并发数创建workers
-        if self.qps < self.concurrency:
+        if self.qpm < self.concurrency:
             worker_counts = 1
         else:
             worker_counts = self.concurrency
-        qps_per_worker = self.qps / worker_counts
-        self.logger.info(f"Creating {worker_counts} workers, each handling {qps_per_worker} QPS")
+        qpm_per_worker = self.qpm / worker_counts
+        self.logger.info(f"Creating {worker_counts} workers, each handling {qpm_per_worker} QPS")
         self.logger.info(f"Total formatted JSON size: {len(self.formatted_json)}")
 
         # Split formatted_json into equal chunks based on concurrency
@@ -136,7 +136,7 @@ class BaseExperiment:
                     self.experiment_results,
                     worker_id,
                     worker_json,
-                    qps_per_worker
+                    qpm_per_worker
                 )
             )
             workers.append(worker_task)
@@ -172,7 +172,7 @@ class BaseExperiment:
             self.start_time,
             self.end_time,
             self.num_requests,
-            self.qps,
+            self.qpm,
             self.output_tokens,
             self.latency_slo,
             self.client.fairness_ratio,
@@ -186,9 +186,9 @@ class BaseExperiment:
 
         # 如果成功率小于80%，则将QPS增加率设置为1
         if completed_requests_rate < 0.8:
-            self.client.qps_ratio = 1
+            self.client.qpm_ratio = 1
         else:
-            self.client.qps_ratio = 1.5
+            self.client.qpm_ratio = 1.5
 
         return self.metrics
 
@@ -199,7 +199,7 @@ class BaseExperiment:
 
         return {
             "client_id": self.client_id,
-            "qps": self.qps,
+            "qps": self.qpm,
             "output_tokens": self.output_tokens,
             "latency_slo": self.latency_slo,
             "total_requests": self.num_requests,
