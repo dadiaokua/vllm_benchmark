@@ -35,28 +35,40 @@ def setup_vllm_servers(vllm_urls, local_port, remote_port):
     servers = []
     # Check ports and establish SSH tunnels
     for i, url in enumerate(vllm_urls):
+        print(f"\n=== Setting up tunnel {i+1}/{len(vllm_urls)} for {url} ===")
+        
         # Extract host from URL
         host = url.split("://")[1].split(":")[0]
         port = int(url.split(":")[-1].split("/")[0])
-
-        # Check if port is in use
-        if check_port_in_use(port):
-            print(f"Port {port} is in use. Attempting to kill existing process...")
-            os.system(f"lsof -ti:{port} | xargs kill -9")
+        
+        print(f"Extracted host: {host}, remote port: {port}")
+        print(f"Local port: {local_port[i]}, SSH port: {remote_port[i]}")
 
         # Start SSH tunnel using command line
         # Use environment variable or config file to store password
         ssh_password = os.environ.get('SSH_PASSWORD', '')  # Get password from environment variable
+        username = os.environ.get('SSH_USERNAME', '')  # Get username from environment variable
         if not ssh_password:
             # Fallback to reading from config file if env var not set
             try:
                 with open('config/ssh_config.json') as f:
-                    ssh_password = json.load(f).get('password', '')
+                    ssh_config = json.load(f)
+                    ssh_password = ssh_config.get('password', '')
+                    username = ssh_config.get('name', '')
+                print(f"Using credentials from config file for user: {username}")
             except:
                 raise ValueError("SSH password not found in environment or config file")
-        server = create_ssh_tunnel(host, port, local_port[i], 'hjh', ssh_password, remote_port[i])
-        print(f"Established SSH tunnel for {url}")
-        servers.append(server)
+        else:
+            print(f"Using credentials from environment variables for user: {username}")
+            
+        server = create_ssh_tunnel(host, port, local_port[i], username, ssh_password, remote_port[i])
+        if server:
+            print(f"✓ SSH tunnel established for {url}")
+            servers.append(server)
+        else:
+            print(f"✗ Failed to establish SSH tunnel for {url}")
+            
+    print(f"\n=== Summary: {len(servers)}/{len(vllm_urls)} tunnels established ===")
     return servers
 
 def monitor_tunnel(server):
@@ -75,6 +87,19 @@ def monitor_tunnel(server):
 def create_ssh_tunnel(host, remote_port, local_port, username, password, ssh_port):
     tunnel_servers = None
     try:
+        # 首先检查本地端口是否被占用
+        if check_port_in_use(local_port):
+            print(f"Local port {local_port} is in use. Attempting to kill existing process...")
+            os.system(f"lsof -ti:{local_port} | xargs kill -9")
+            time.sleep(2)  # 等待进程完全关闭
+            
+            # 再次检查端口是否释放
+            if check_port_in_use(local_port):
+                print(f"Failed to free local port {local_port}")
+                return None
+
+        print(f"Creating SSH tunnel: {host}:{ssh_port} -> localhost:{local_port} <-> localhost:{remote_port}")
+        
         tunnel_servers = SSHTunnelForwarder(
             host,
             ssh_username=username,
@@ -85,15 +110,28 @@ def create_ssh_tunnel(host, remote_port, local_port, username, password, ssh_por
             set_keepalive=20
         )
         tunnel_servers.start()
-        print(f"SSH tunnel established on local port {local_port}")
-
-        # Start monitoring in separate thread
-        monitor_thread = threading.Thread(target=monitor_tunnel, args=(tunnel_servers,))
-        monitor_thread.daemon = True  # Thread will terminate when main program exits
-        monitor_thread.start()
+        
+        # 验证隧道是否真正建立
+        time.sleep(2)  # 等待隧道建立
+        if tunnel_servers.is_active:
+            print(f"SSH tunnel established successfully on local port {local_port}")
+            # Start monitoring in separate thread
+            monitor_thread = threading.Thread(target=monitor_tunnel, args=(tunnel_servers,))
+            monitor_thread.daemon = True  # Thread will terminate when main program exits
+            monitor_thread.start()
+        else:
+            print(f"SSH tunnel failed to start properly")
+            return None
 
     except Exception as e:
-        print(f"Error creating SSH tunnel: {e}")
+        print(f"Error creating SSH tunnel to {host}:{ssh_port}: {e}")
+        print(f"Details: local_port={local_port}, remote_port={remote_port}")
+        if tunnel_servers:
+            try:
+                tunnel_servers.stop()
+            except:
+                pass
+        return None
 
     return tunnel_servers
 
