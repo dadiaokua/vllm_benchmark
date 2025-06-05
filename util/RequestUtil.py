@@ -57,19 +57,32 @@ async def make_request(client, experiment, request):
         return None
 
 
-def calculate_all_request_times(rate_lambda, round_time, distribution, time_ratio):
+def calculate_all_request_times(experiment, qmp_per_worker):
     """
     预先计算所有请求的时间点
     
     Args:
-        rate_lambda: 每分钟发送的请求数量
-        round_time: 测试轮次时间（秒）
-        distribution: 分布类型
-        time_ratio: 时间比例
+        experiment: 实验对象，包含round_time, distribution, time_ratio等属性
+        qmp_per_worker: 每个worker每分钟发送的请求数量
     
     Returns:
         list: 请求时间点列表
     """
+    # 从experiment对象中获取参数
+    rate_lambda = qmp_per_worker
+    round_time = experiment.round_time
+    distribution = experiment.distribution
+    time_ratio = experiment.time_ratio
+    
+    # 预留缓冲时间给最后的请求完成 (默认预留request_timeout的2倍时间)
+    buffer_time = getattr(experiment, 'request_timeout', 20) * 2
+    # 确保缓冲时间不超过round_time的30%
+    buffer_time = min(buffer_time, round_time * 0.3)
+    # 实际可用的发送时间窗口
+    effective_round_time = round_time - buffer_time
+    
+    experiment.logger.info(f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
+    
     # 将每分钟请求数转换为每秒请求数
     rate_per_second = rate_lambda / 60.0
     
@@ -79,8 +92,8 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
     # 基础时间间隔
     base_interval = 1 / rate_per_second
 
-    # 估算总请求数，添加一些随机性
-    estimated_requests = int(round_time * rate_per_second)
+    # 估算总请求数，基于有效时间窗口
+    estimated_requests = int(effective_round_time * rate_per_second)
     # 在估算请求数基础上增加10%的随机变化
     random_variation = random.uniform(0.9, 1.1)
     estimated_requests = int(estimated_requests * random_variation)
@@ -90,7 +103,7 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
     global_start_time = time.time()  # 使用当前时间作为全局开始时间
     
     # 添加一个随机的开始偏移，避免所有client同时开始
-    start_offset = random.uniform(0, min(5.0, round_time * 0.1))  # 最多5秒或round_time的10%
+    start_offset = random.uniform(0, min(5.0, effective_round_time * 0.1))  # 最多5秒或effective_round_time的10%
 
     # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
@@ -116,7 +129,7 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
             interval = max(0.001, interval)  # 确保间隔为正
 
         current_offset += interval
-        if current_offset > round_time:  # 确保不超出round_time
+        if current_offset > effective_round_time:  # 确保不超出有效时间窗口
             break
         base_times.append(current_offset)
 
@@ -126,22 +139,22 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
         # 添加小幅随机偏移
         jitter = random.uniform(-0.5, 0.5)  # ±0.5秒的抖动
         jittered_offset = base_offset + jitter
-        jittered_offset = max(start_offset, min(round_time, jittered_offset))  # 确保在有效范围内
+        jittered_offset = max(start_offset, min(effective_round_time, jittered_offset))  # 确保在有效范围内
         
-        # 应用非线性映射
-        if time_ratio > 1 and jittered_offset <= round_time:
+        # 应用非线性映射（在有效时间窗口内）
+        if time_ratio > 1 and jittered_offset <= effective_round_time:
             # 使用sigmoid类函数进行平滑映射
-            progress = jittered_offset / round_time
+            progress = jittered_offset / effective_round_time
             # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
             adjusted_progress = progress ** (1 / time_ratio)
-            adjusted_offset = adjusted_progress * round_time
+            adjusted_offset = adjusted_progress * effective_round_time
         else:
             # time_ratio <= 1的情况，直接线性缩放
             adjusted_offset = jittered_offset * time_ratio
 
-        # 确保调整后的时间不会超出原始窗口
-        if adjusted_offset > round_time:
-            adjusted_offset = round_time
+        # 确保调整后的时间不会超出有效时间窗口
+        if adjusted_offset > effective_round_time:
+            adjusted_offset = effective_round_time
 
         # 将偏移转换为绝对时间
         request_time = global_start_time + adjusted_offset
@@ -153,21 +166,32 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
         num_to_shuffle = max(1, len(shuffled_times) // 5)
         indices_to_shuffle = random.sample(range(len(shuffled_times)), num_to_shuffle)
         
-        # 对选中的时间点进行局部随机化
+        # 对选中的时间点进行局部随机化（确保仍在有效时间窗口内）
         for idx in indices_to_shuffle:
             # 在附近范围内随机调整时间
             if idx > 0 and idx < len(shuffled_times) - 1:
                 min_time = (shuffled_times[idx-1] + shuffled_times[idx]) / 2
                 max_time = (shuffled_times[idx] + shuffled_times[idx+1]) / 2
-                shuffled_times[idx] = random.uniform(min_time, max_time)
+                # 确保不超出有效时间窗口
+                max_time = min(max_time, global_start_time + effective_round_time)
+                if min_time < max_time:
+                    shuffled_times[idx] = random.uniform(min_time, max_time)
 
     # 确保时间点仍然是递增的
     shuffled_times.sort()
     
+    # 最终检查：确保所有时间点都在有效窗口内
+    shuffled_times = [t for t in shuffled_times if t <= global_start_time + effective_round_time]
+    
+    experiment.logger.info(f"Generated {len(shuffled_times)} request times in {effective_round_time}s window, buffer: {buffer_time}s")
+    if shuffled_times:
+        last_request_time = shuffled_times[-1] - global_start_time
+        experiment.logger.info(f"Last request at: {last_request_time:.2f}s, buffer remaining: {effective_round_time - last_request_time:.2f}s")
+    
     return shuffled_times
 
 
-async def worker(experiment, selected_clients, semaphore, results, worker_id, worker_json, qpm_per_worker):
+async def worker(experiment, selected_clients, semaphore, results, worker_id, worker_json, qmp_per_worker):
     """每个task发送单个请求，使用预先计算的时间点控制间隔"""
     assert worker_json is not None, "sample_content is None!"
     assert isinstance(worker_json, list), f"sample_content is not a list! type={type(worker_json)}"
@@ -183,8 +207,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     tokens_counter = ThreadSafeCounter()
 
     # 预先计算所有请求的时间点
-    request_times = calculate_all_request_times(qpm_per_worker, experiment.round_time, experiment.distribution,
-                                                experiment.time_ratio)
+    request_times = calculate_all_request_times(experiment, qmp_per_worker)
 
     for target_time in request_times:
         if time.time() - global_start_time >= experiment.round_time:
@@ -228,7 +251,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
             f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
     else:
-        experiment.logger.info(f"[Worker {worker_id}] Finished all requests, no need to sleep.")
+        experiment.logger.info(f"[Worker {worker_id}] Reached the end of the round time.")
 
     # 等待所有任务完成
     if tasks:

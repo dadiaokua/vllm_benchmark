@@ -228,7 +228,10 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     # 3. credit值
     plot_client_metric(axs2[2], sorted_all_results, short_clients, long_clients,
                        warm_colors, cool_colors, "credit",
-                       "Clients Credit", legend_handles, legend_labels, ylim=(-10, 10))
+                       "Clients Credit", legend_handles, legend_labels, ylim=None)
+
+    # 为第三张图添加图例
+    axs2[2].legend()
 
     # 在性能指标图底部添加共享图例
     fig1.legend(handles=legend_handles, labels=legend_labels,
