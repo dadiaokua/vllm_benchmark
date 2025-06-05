@@ -72,40 +72,65 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
     # 基础时间间隔
     base_interval = 1 / rate_per_second
 
-    # 估算总请求数
+    # 估算总请求数，添加一些随机性
     estimated_requests = int(round_time * rate_per_second)
+    # 在估算请求数基础上增加10%的随机变化
+    random_variation = random.uniform(0.9, 1.1)
+    estimated_requests = int(estimated_requests * random_variation)
 
     # 生成所有请求的时间点
     request_times = []
     global_start_time = time.time()  # 使用当前时间作为全局开始时间
+    
+    # 添加一个随机的开始偏移，避免所有client同时开始
+    start_offset = random.uniform(0, min(5.0, round_time * 0.1))  # 最多5秒或round_time的10%
 
     # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
-    current_offset = 0
+    current_offset = start_offset  # 从随机偏移开始
+    
     for i in range(estimated_requests):
+        # 增加分布的随机性
         if distribution.lower() == "poisson":
-            interval = float(np.random.exponential(base_interval))
+            # 泊松分布，但添加更多随机性
+            base_rate_variation = random.uniform(0.7, 1.3)  # 基础速率的变化
+            adjusted_interval = base_interval * base_rate_variation
+            interval = float(np.random.exponential(adjusted_interval))
         elif distribution.lower() == "normal":
-            interval = base_interval + float(np.random.normal(0, base_interval * 0.1))
+            # 正态分布，增加标准差
+            std_dev = base_interval * random.uniform(0.2, 0.4)  # 随机标准差
+            interval = base_interval + float(np.random.normal(0, std_dev))
+            interval = max(0.001, interval)  # 确保间隔为正
         else:
-            interval = base_interval + float(np.random.uniform(-base_interval * 0.1, base_interval * 0.1))
+            # 均匀分布，增加变化范围
+            variation_range = random.uniform(0.3, 0.7)  # 随机变化范围
+            interval = base_interval + float(np.random.uniform(-base_interval * variation_range, 
+                                                               base_interval * variation_range))
+            interval = max(0.001, interval)  # 确保间隔为正
 
         current_offset += interval
         if current_offset > round_time:  # 确保不超出round_time
             break
         base_times.append(current_offset)
 
-    # 应用非线性映射
-    for base_offset in base_times:
-        if time_ratio > 1 and base_offset <= round_time:
+    # 对时间点进行轻微的随机打散，但保持总体顺序
+    shuffled_times = []
+    for i, base_offset in enumerate(base_times):
+        # 添加小幅随机偏移
+        jitter = random.uniform(-0.5, 0.5)  # ±0.5秒的抖动
+        jittered_offset = base_offset + jitter
+        jittered_offset = max(start_offset, min(round_time, jittered_offset))  # 确保在有效范围内
+        
+        # 应用非线性映射
+        if time_ratio > 1 and jittered_offset <= round_time:
             # 使用sigmoid类函数进行平滑映射
-            progress = base_offset / round_time
+            progress = jittered_offset / round_time
             # 调整后的进度，保持开始和结束点不变，但中间部分根据time_ratio拉伸
             adjusted_progress = progress ** (1 / time_ratio)
             adjusted_offset = adjusted_progress * round_time
         else:
             # time_ratio <= 1的情况，直接线性缩放
-            adjusted_offset = base_offset * time_ratio
+            adjusted_offset = jittered_offset * time_ratio
 
         # 确保调整后的时间不会超出原始窗口
         if adjusted_offset > round_time:
@@ -113,9 +138,26 @@ def calculate_all_request_times(rate_lambda, round_time, distribution, time_rati
 
         # 将偏移转换为绝对时间
         request_time = global_start_time + adjusted_offset
-        request_times.append(request_time)
+        shuffled_times.append(request_time)
 
-    return request_times
+    # 最后再次打散一部分时间点，增加随机性
+    if len(shuffled_times) > 1:
+        # 随机选择20%的时间点进行轻微重排
+        num_to_shuffle = max(1, len(shuffled_times) // 5)
+        indices_to_shuffle = random.sample(range(len(shuffled_times)), num_to_shuffle)
+        
+        # 对选中的时间点进行局部随机化
+        for idx in indices_to_shuffle:
+            # 在附近范围内随机调整时间
+            if idx > 0 and idx < len(shuffled_times) - 1:
+                min_time = (shuffled_times[idx-1] + shuffled_times[idx]) / 2
+                max_time = (shuffled_times[idx] + shuffled_times[idx+1]) / 2
+                shuffled_times[idx] = random.uniform(min_time, max_time)
+
+    # 确保时间点仍然是递增的
+    shuffled_times.sort()
+    
+    return shuffled_times
 
 
 async def worker(experiment, selected_clients, semaphore, results, worker_id, worker_json, qpm_per_worker):
@@ -147,7 +189,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
             if sleep_time > 0:
                 sleep_start = time.time()
                 await asyncio.sleep(sleep_time)
-                if sleep_time > 2:
+                if sleep_time > 5:
                     sleep_end = time.time()
                     experiment.logger.info(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
                                            f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
