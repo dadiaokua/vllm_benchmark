@@ -16,6 +16,15 @@ from util.TunnelUtil import setup_vllm_servers, stop_tunnel
 import logging
 
 
+def safe_float_conversion(value, default=1.0):
+    """安全地将字符串转换为float，处理空字符串和无效值"""
+    if not value or value.strip() == '':
+        return default
+    try:
+        return float(value.strip())
+    except (ValueError, TypeError):
+        return default
+
 async def setup_benchmark_tasks(args, all_results, request_queue):
     """Setup and create benchmark tasks"""
     tasks = []
@@ -38,6 +47,26 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
 
     openAI_client = initialize_clients(args.local_port)
 
+    if not args.vllm_url or not args.vllm_url[0]:
+        print("vLLM URL is required")
+        return None, None, None
+
+    # 过滤空字符串
+    args.short_qpm = [qpm for qpm in args.short_qpm if qpm and qpm.strip()]
+    args.long_qpm = [qpm for qpm in args.long_qpm if qpm and qpm.strip()]
+    args.short_clients_slo = [slo for slo in args.short_clients_slo if slo and slo.strip()]
+    args.long_clients_slo = [slo for slo in args.long_clients_slo if slo and slo.strip()]
+
+    # 如果过滤后列表为空，设置默认值
+    if not args.short_qpm:
+        args.short_qpm = ['1.0']
+    if not args.long_qpm:
+        args.long_qpm = ['1.0']
+    if not args.short_clients_slo:
+        args.short_clients_slo = ['10']
+    if not args.long_clients_slo:
+        args.long_clients_slo = ['10']
+
     if len(args.short_qpm) != 1 and len(args.short_qpm) != args.short_clients:
         print("short_qps must be a single value or a list of values equal to the number of short clients")
         return None, None, None
@@ -48,10 +77,13 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
 
     # Create short request clients
     for index in range(args.short_clients):
+        qpm_value = safe_float_conversion(args.short_qpm[0] if len(args.short_qpm) == 1 else args.short_qpm[index])
+        slo_value = safe_float_conversion(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index], 10)
+        
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
-            qpm=float(args.short_qpm[0] if len(args.short_qpm) == 1 else args.short_qpm[index]),
+            qpm=qpm_value,
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -68,17 +100,20 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             round=args.round,
             exp_type=args.exp,
             qpm_ratio=args.short_client_qpm_ratio,
-            latency_slo=int(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index])
+            latency_slo=int(slo_value)
         )
         clients.append(client)
         tasks.append(client.start())
 
     # Create long request clients
     for index in range(args.long_clients):
+        qpm_value = safe_float_conversion(args.long_qpm[0] if len(args.long_qpm) == 1 else args.long_qpm[index])
+        slo_value = safe_float_conversion(args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index], 10)
+        
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
-            qpm=float(args.long_qpm[0] if len(args.long_qpm) == 1 else args.long_qpm[index]),
+            qpm=qpm_value,
             port=args.local_port,
             api_key=args.api_key,
             distribution=args.distribution,
@@ -95,7 +130,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
             round=args.round,
             exp_type=args.exp,
             qpm_ratio=args.long_client_qpm_ratio,
-            latency_slo=int(args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index])
+            latency_slo=int(slo_value)
         )
         clients.append(client)
         tasks.append(client.start())
