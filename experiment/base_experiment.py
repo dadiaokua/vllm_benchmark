@@ -48,10 +48,12 @@ class BaseExperiment:
         self.latency_slo = self.config.get('latency_slo', 10)
         self.active_ratio = client.active_ratio
         self.time_ratio = client.time_ratio
+        self.max_service = client.max_service
 
         self.qps_per_worker = 0
         self.exp_type = ''
         self.drift_time = 0
+        self.timeout_count = 0
 
         # 实验结果
         self.experiment_results = []
@@ -177,7 +179,8 @@ class BaseExperiment:
             self.latency_slo,
             self.client.fairness_ratio,
             self.drift_time,
-            self.client.credit
+            self.client.credit,
+            self.timeout_count
         )
 
         # 更新客户端的相关指标
@@ -187,8 +190,6 @@ class BaseExperiment:
         # 如果成功率小于80%，则将QPS增加率设置为1
         if completed_requests_rate < 0.8:
             self.client.qpm_ratio = 1
-        else:
-            self.client.qpm_ratio = 1.5
 
         return self.metrics
 

@@ -65,6 +65,7 @@ class BenchmarkClient:
         self.time_ratio = 1.0
         self.fairness_ratio = 0
         self.credit = 0
+        self.max_service = -1
 
         self.openAI_client = OpenAI_client
         self.monitor_done_event = asyncio.Event()
@@ -123,7 +124,7 @@ class BenchmarkClient:
             if result:
                 self.results.append(result)
             else:
-                self.results.append(self.results[-1])
+                self.logger.info(f"Client {self.client_id}: No result for configuration {i + 1}/{self.round}")
             await self.result_queue.put(1)
 
             self.results[-1]["fairness_ratio"] = self.fairness_ratio

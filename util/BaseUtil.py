@@ -118,9 +118,11 @@ def get_average_success_rate(clients):
 
 def adjust_resources(client_low_fairness_ratio, client_high_fairness_ratio, delta, avg_success_rate):
     """统一的资源调整策略"""
-    # 调整 time_ratio - 无论负载如何，都减少高公平性客户端的 time_ratio
+    # 调整 time_ratio
     client_high_fairness_ratio.time_ratio = client_high_fairness_ratio.time_ratio * (1 - delta)
     client_low_fairness_ratio.time_ratio = client_low_fairness_ratio.time_ratio * (1 + delta)
+
+    client_low_fairness_ratio.max_service = client_low_fairness_ratio.service * delta / 2
 
     # # 减少 client1 的 active_ratio - 无论负载如何
     # min_active_ratio = GLOBAL_CONFIG.get("MIN_ACTIVE_RATIO", 0.1)

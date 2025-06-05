@@ -6,8 +6,10 @@ import numpy as np
 import logging
 
 import random
+import threading
 
 from config.Config import GLOBAL_CONFIG
+from util.ThreadSafeUtil import ThreadSafeCounter
 
 
 async def process_stream(stream):
@@ -33,17 +35,22 @@ async def make_request(client, experiment, request):
             max_tokens=experiment.output_tokens,
             stream=True
         )
-        first_token_time, total_tokens = await asyncio.wait_for(process_stream(stream), timeout=experiment.request_timeout)
+        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=experiment.request_timeout)
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
-        tokens_per_second = total_tokens / elapsed_time if elapsed_time > 0 else 0
-        return total_tokens, elapsed_time, tokens_per_second, ttft, len(
+        tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
+        
+        return output_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
     except asyncio.TimeoutError:
-        experiment.logger.warning(f"Request timed out after {experiment.request_timeout} seconds")
+        # 记录timeout次数
+        if hasattr(experiment, 'timeout_count'):
+            experiment.timeout_count += 1
+            
+        experiment.logger.warning(f"Request timed out after {experiment.request_timeout} seconds (Total timeouts: {experiment.timeout_count})")
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
@@ -172,6 +179,9 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     tasks = []
     task_status = {}
 
+    # 创建线程安全的token计数器
+    tokens_counter = ThreadSafeCounter()
+
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(qpm_per_worker, experiment.round_time, experiment.distribution,
                                                 experiment.time_ratio)
@@ -189,12 +199,12 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
             if sleep_time > 0:
                 sleep_start = time.time()
                 await asyncio.sleep(sleep_time)
-                if sleep_time > 5:
-                    sleep_end = time.time()
-                    experiment.logger.info(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
-                                           f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
-                                           f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
-                                           f"actual_sleep: {sleep_end - sleep_start:.6f}")
+                # if sleep_time > 5:
+                #     sleep_end = time.time()
+                #     experiment.logger.info(f"[Worker {worker_id}] target_time: {target_time:.6f}, "
+                #                            f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
+                #                            f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
+                #                            f"actual_sleep: {sleep_end - sleep_start:.6f}")
             else:
                 experiment.logger.warning(
                     f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
@@ -204,7 +214,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         request = random.choice(worker_json)
         selected_client = selected_clients[worker_id % len(selected_clients)]
         task = asyncio.create_task(
-            process_request(selected_client, experiment, request, worker_id, results, semaphore)
+            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter)
         )
         task_status[task] = {"start_time": time.time(), "status": "running"}
         task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
@@ -225,16 +235,30 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}")
         experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
 
     return completed, drift_time, request_count
 
 
-async def process_request(client, experiment, request, worker_id, results, semaphore):
+async def process_request(client, experiment, request, worker_id, results, semaphore, tokens_counter):
     async with semaphore:
         try:
+            # 检查当前token总数是否超限
+            if hasattr(experiment, 'max_tokens') and tokens_counter.value >= experiment.max_tokens:
+                experiment.logger.info(f"Worker {worker_id} reached max tokens limit ({experiment.max_tokens})")
+                return
+                
             result = await make_request(client, experiment, request)
             if result:
+                output_tokens = result[0]  # 第一个元素是output_tokens
+                # 原子性地更新token计数
+                new_total = tokens_counter.add(output_tokens)
                 results.append(result)
+                
+                # 如果超过限制，记录日志
+                if hasattr(experiment, 'max_tokens') and new_total >= experiment.max_tokens:
+                    experiment.logger.info(f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
+                    
         except Exception as e:
             logging.error(
                 f"Worker {worker_id} {experiment.config_round + 1} round for client {experiment.client_index} raised an exception: {e}")
