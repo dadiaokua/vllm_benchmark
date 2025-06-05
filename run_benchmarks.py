@@ -21,15 +21,40 @@ def safe_float_conversion(value, default=1.0):
     if not value or value.strip() == '':
         return default
     try:
+        
         return float(value.strip())
     except (ValueError, TypeError):
         return default
 
-async def setup_benchmark_tasks(args, all_results, request_queue):
+def preprocess_space_separated_args(args):
+    """预处理空格分隔的参数，将单个字符串拆分为列表"""
+    
+    # 处理 short_qpm - 只在是单个包含空格的字符串时才拆分
+    if args.short_qpm and len(args.short_qpm) == 1 and ' ' in str(args.short_qpm[0]):
+        args.short_qpm = str(args.short_qpm[0]).split()
+    
+    # 处理 long_qpm - 只在是单个包含空格的字符串时才拆分
+    if args.long_qpm and len(args.long_qpm) == 1 and ' ' in str(args.long_qpm[0]):
+        args.long_qpm = str(args.long_qpm[0]).split()
+    
+    # 处理 short_clients_slo - 只在是单个包含空格的字符串时才拆分
+    if args.short_clients_slo and len(args.short_clients_slo) == 1 and ' ' in str(args.short_clients_slo[0]):
+        args.short_clients_slo = str(args.short_clients_slo[0]).split()
+    
+    # 处理 long_clients_slo - 只在是单个包含空格的字符串时才拆分
+    if args.long_clients_slo and len(args.long_clients_slo) == 1 and ' ' in str(args.long_clients_slo[0]):
+        args.long_clients_slo = str(args.long_clients_slo[0]).split()
+    
+    return args
+
+async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     """Setup and create benchmark tasks"""
     tasks = []
     clients = []
 
+    # 预处理参数
+    args = preprocess_space_separated_args(args)
+    
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
 
     # short_formatted_json, time_data = await prepare_benchmark_data('short', tokenizer)
@@ -48,38 +73,28 @@ async def setup_benchmark_tasks(args, all_results, request_queue):
     openAI_client = initialize_clients(args.local_port)
 
     if not args.vllm_url or not args.vllm_url[0]:
-        print("vLLM URL is required")
+        logger.error("vLLM URL is required")
         return None, None, None
 
-    # 过滤空字符串
-    args.short_qpm = [qpm for qpm in args.short_qpm if qpm and qpm.strip()]
-    args.long_qpm = [qpm for qpm in args.long_qpm if qpm and qpm.strip()]
-    args.short_clients_slo = [slo for slo in args.short_clients_slo if slo and slo.strip()]
-    args.long_clients_slo = [slo for slo in args.long_clients_slo if slo and slo.strip()]
-
-    # 如果过滤后列表为空，设置默认值
-    if not args.short_qpm:
-        args.short_qpm = ['1.0']
-    if not args.long_qpm:
-        args.long_qpm = ['1.0']
-    if not args.short_clients_slo:
-        args.short_clients_slo = ['10']
-    if not args.long_clients_slo:
-        args.long_clients_slo = ['10']
+    # 打印调试信息
+    logger.info(f"Processed short_qpm: {args.short_qpm}")
+    logger.info(f"Processed long_qpm: {args.long_qpm}")
+    logger.info(f"Processed short_clients_slo: {args.short_clients_slo}")
+    logger.info(f"Processed long_clients_slo: {args.long_clients_slo}")
 
     if len(args.short_qpm) != 1 and len(args.short_qpm) != args.short_clients:
-        print("short_qps must be a single value or a list of values equal to the number of short clients")
+        logger.error("short_qps must be a single value or a list of values equal to the number of short clients")
         return None, None, None
     
     if len(args.long_qpm) != 1 and len(args.long_qpm) != args.long_clients:
-        print("long_qps must be a single value or a list of values equal to the number of long clients")
+        logger.error("long_qps must be a single value or a list of values equal to the number of long clients")
         return None, None, None 
 
     # Create short request clients
     for index in range(args.short_clients):
         qpm_value = safe_float_conversion(args.short_qpm[0] if len(args.short_qpm) == 1 else args.short_qpm[index])
         slo_value = safe_float_conversion(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index], 10)
-        
+        logger.info(f"Creating short client {index}: qpm={qpm_value}, slo={slo_value}")
         client = BenchmarkClient(
             client_type='short',
             client_index=index,
@@ -288,7 +303,7 @@ async def main():
     request_queue = asyncio.Queue()
 
     start_time = time.time()
-    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue)
+    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue, logger)
 
     try:
         await run_benchmark_tasks(tasks, logger)
