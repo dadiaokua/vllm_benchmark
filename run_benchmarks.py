@@ -21,31 +21,33 @@ def safe_float_conversion(value, default=1.0):
     if not value or value.strip() == '':
         return default
     try:
-        
+
         return float(value.strip())
     except (ValueError, TypeError):
         return default
 
+
 def preprocess_space_separated_args(args):
     """预处理空格分隔的参数，将单个字符串拆分为列表"""
-    
+
     # 处理 short_qpm - 只在是单个包含空格的字符串时才拆分
     if args.short_qpm and len(args.short_qpm) == 1 and ' ' in str(args.short_qpm[0]):
         args.short_qpm = str(args.short_qpm[0]).split()
-    
+
     # 处理 long_qpm - 只在是单个包含空格的字符串时才拆分
     if args.long_qpm and len(args.long_qpm) == 1 and ' ' in str(args.long_qpm[0]):
         args.long_qpm = str(args.long_qpm[0]).split()
-    
+
     # 处理 short_clients_slo - 只在是单个包含空格的字符串时才拆分
     if args.short_clients_slo and len(args.short_clients_slo) == 1 and ' ' in str(args.short_clients_slo[0]):
         args.short_clients_slo = str(args.short_clients_slo[0]).split()
-    
+
     # 处理 long_clients_slo - 只在是单个包含空格的字符串时才拆分
     if args.long_clients_slo and len(args.long_clients_slo) == 1 and ' ' in str(args.long_clients_slo[0]):
         args.long_clients_slo = str(args.long_clients_slo[0]).split()
-    
+
     return args
+
 
 async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     """Setup and create benchmark tasks"""
@@ -54,7 +56,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
 
     # 预处理参数
     args = preprocess_space_separated_args(args)
-    
+
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
 
     # short_formatted_json, time_data = await prepare_benchmark_data('short', tokenizer)
@@ -85,15 +87,16 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     if len(args.short_qpm) != 1 and len(args.short_qpm) != args.short_clients:
         logger.error("short_qps must be a single value or a list of values equal to the number of short clients")
         return None, None, None
-    
+
     if len(args.long_qpm) != 1 and len(args.long_qpm) != args.long_clients:
         logger.error("long_qps must be a single value or a list of values equal to the number of long clients")
-        return None, None, None 
+        return None, None, None
 
-    # Create short request clients
+        # Create short request clients
     for index in range(args.short_clients):
         qpm_value = safe_float_conversion(args.short_qpm[0] if len(args.short_qpm) == 1 else args.short_qpm[index])
-        slo_value = safe_float_conversion(args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index], 10)
+        slo_value = safe_float_conversion(
+            args.short_clients_slo[0] if len(args.short_clients_slo) == 1 else args.short_clients_slo[index], 10)
         logger.info(f"Creating short client {index}: qpm={qpm_value}, slo={slo_value}")
         client = BenchmarkClient(
             client_type='short',
@@ -123,8 +126,9 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     # Create long request clients
     for index in range(args.long_clients):
         qpm_value = safe_float_conversion(args.long_qpm[0] if len(args.long_qpm) == 1 else args.long_qpm[index])
-        slo_value = safe_float_conversion(args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index], 10)
-        
+        slo_value = safe_float_conversion(
+            args.long_clients_slo[0] if len(args.long_clients_slo) == 1 else args.long_clients_slo[index], 10)
+
         client = BenchmarkClient(
             client_type='long',
             client_index=index,
@@ -151,13 +155,15 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
         tasks.append(client.start())
 
     # 创建监控器实例
-    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp, request_queue, args.use_tunnel)
+    monitor = ExperimentMonitor(clients, all_results, args.short_clients + args.long_clients, args.exp, request_queue,
+                                args.use_tunnel)
 
     # 创建监控任务
     monitor_task = asyncio.create_task(monitor())
     tasks.insert(0, monitor_task)
 
     return tasks, monitor_task, clients
+
 
 def setup_logger():
     # 日志文件夹和文件名
@@ -179,8 +185,9 @@ def setup_logger():
         ch.setLevel(logging.INFO)
         ch.setFormatter(formatter)
         logger.addHandler(ch)
-        
+
     return logger
+
 
 def parse_args(logger):
     parser = argparse.ArgumentParser(description="Run vLLM benchmarks with various configurations")
@@ -190,10 +197,12 @@ def parse_args(logger):
     parser.add_argument("--use_tunnel", type=int, default=1)
     parser.add_argument("--api_key", type=str, required=True, help="API key for vLLM server", default='test')
     parser.add_argument("--distribution", type=str, help="Distribution of request")
-    parser.add_argument("--short_qpm", type=str, nargs='+', help="Qps of short client request", required=True, default=1.0)
+    parser.add_argument("--short_qpm", type=str, nargs='+', help="Qps of short client request", required=True,
+                        default=1.0)
     parser.add_argument("--short_client_qpm_ratio", type=float, required=True, help="Qps ratio of short client",
                         default=1)
-    parser.add_argument("--long_qpm", type=str, nargs='+', help="Qps of long client request", required=True, default=1.0)
+    parser.add_argument("--long_qpm", type=str, nargs='+', help="Qps of long client request", required=True,
+                        default=1.0)
     parser.add_argument("--long_client_qpm_ratio", type=float, required=True, help="Qps ratio of long client",
                         default=1)
     parser.add_argument("--concurrency", type=int, help="concurrency", default=50)
@@ -212,10 +221,13 @@ def parse_args(logger):
     parser.add_argument("--round_time", type=int, default=600, help="Timeout for every round (default: 600)",
                         required=True)
     parser.add_argument("--exp", type=str, help="Experiment type", required=True, default="LFS")
-    parser.add_argument("--tokenizer", type=str, help="Tokenizer local path", default="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4")
-    parser.add_argument("--request_model_name", type=str, help="Request model name", default="Meta-Llama-3.1-8B-Instruct-AWQ-INT4", required=True)
+    parser.add_argument("--tokenizer", type=str, help="Tokenizer local path",
+                        default="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4")
+    parser.add_argument("--request_model_name", type=str, help="Request model name",
+                        default="Meta-Llama-3.1-8B-Instruct-AWQ-INT4", required=True)
     args = parser.parse_args()
     return args
+
 
 def print_benchmark_config(args, logger):
     logger.info("\nBenchmark Configuration:")
@@ -224,18 +236,22 @@ def print_benchmark_config(args, logger):
         logger.info(f"{k}: {v}")
     logger.info("------------------------\n")
 
+
 def setup_servers_if_needed(args):
     if getattr(args, "use_tunnel", 0):
         return setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
     return []
 
+
 def setup_request_model_name(args):
     if args.request_model_name:
         GLOBAL_CONFIG['request_model_name'] = args.request_model_name
 
+
 def prepare_results_file():
     with open(RESULTS_FILE, "w") as f:
         json.dump([], f)
+
 
 async def run_benchmark_tasks(tasks, logger):
     benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)
@@ -253,6 +269,7 @@ async def run_benchmark_tasks(tasks, logger):
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
 
 def process_and_save_results(tasks, start_time, args, logger):
     all_benchmark_results = []
@@ -282,6 +299,7 @@ def process_and_save_results(tasks, start_time, args, logger):
     save_benchmark_results(filename, benchmark_results, plot_data, logger)
     return benchmark_results, total_time, filename, plot_data
 
+
 async def cancel_monitor_task(monitor_task, logger):
     monitor_task.cancel()
     try:
@@ -289,11 +307,14 @@ async def cancel_monitor_task(monitor_task, logger):
     except asyncio.CancelledError:
         logger.info("Monitor task cancelled.")
 
+
 async def main():
     logger = setup_logger()
     args = parse_args(logger)
     print_benchmark_config(args, logger)
     GLOBAL_CONFIG['round_time'] = args.round_time
+    if GLOBAL_CONFIG.get('exp_time', 1) < args.round_time * args.round:
+        GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 1.5
 
     servers = setup_servers_if_needed(args)
     setup_request_model_name(args)
