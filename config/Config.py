@@ -3,8 +3,8 @@ from datetime import datetime
 GLOBAL_CONFIG = {
     "latency_slo": 5,
     "output_tokens": 256,
-    "alpha": 0.5,
-    "fairness_ratio_LFS": 0.15,
+    "alpha": 0.7,
+    "fairness_ratio_LFS": 0.2,
     "fairness_ratio_VTC": 0.5,
     'ADJUST_SENSITIVITY': 1,
     "b": 1.5,
