@@ -255,10 +255,17 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
 
     # 等待所有任务完成
     if tasks:
+        # 等待所有任务完成
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 计算总耗时
+        total_elapsed_time = time.time() - global_start_time
+        
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}")
         experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
         experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
+        experiment.logger.info(f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
 
     return completed, drift_time, request_count
 

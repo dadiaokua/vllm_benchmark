@@ -206,11 +206,11 @@ class ExperimentMonitor:
             self.logger.info(f"Fairness calculation complete: {f_result}, {s_result}")
             
             # 根据配置决定是否进行公平性调整
-            if self.config["whether_fairness"]:
+            if self.exp_type != "FCFS":
                 exchange_count = await self._adjust_fairness()
             else:
                 exchange_count = 0
-                self.logger.info("Skipping fairness adjustment (disabled in config)")
+                self.logger.info("Skipping fairness adjustment (FCFS)")
             
             # 保存结果
             self.logger.info(f"Saving results... {f_result}, {s_result}, {exchange_count}")
