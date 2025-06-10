@@ -103,7 +103,7 @@ class ExperimentMonitor:
             ch.setLevel(logging.INFO)
             
             # 创建文件处理器
-            fh = logging.FileHandler(f'log/monitor_{self.exp_type}.log')
+            fh = logging.FileHandler(filename='log/monitor_{self.exp_type}.log', encoding="utf-8", mode="w")
             fh.setLevel(logging.INFO)
             
             # 创建格式化器

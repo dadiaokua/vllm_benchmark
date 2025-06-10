@@ -89,7 +89,7 @@ class BenchmarkClient:
         logger = logging.getLogger(f"client_{self.client_id}")
         logger.setLevel(logging.INFO)
         if not logger.handlers:
-            fh = logging.FileHandler(log_file, encoding="utf-8")
+            fh = logging.FileHandler(log_file, encoding="utf-8", mode="w")
             fh.setLevel(logging.INFO)
             formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
             fh.setFormatter(formatter)
