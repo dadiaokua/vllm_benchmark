@@ -12,7 +12,7 @@ GLOBAL_CONFIG = {
     "max_granularity": 10,
     "round_time": 60,
     "monitor_file_time": datetime.now().strftime("%m_%d_%H_%M"),
-    "exp_time": 3600 * 2,
+    "exp_time": 36000,
     "avg_success_rate": 0.9,
     "max_exchange_times": 1,
     "prompt_max_len": 4096,

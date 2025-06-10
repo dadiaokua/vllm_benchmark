@@ -254,7 +254,7 @@ def prepare_results_file():
 
 
 async def run_benchmark_tasks(tasks, logger):
-    benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 3600 * 2)
+    benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 36000)
     try:
         await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
     except asyncio.TimeoutError:
@@ -274,10 +274,13 @@ async def run_benchmark_tasks(tasks, logger):
 def process_and_save_results(tasks, start_time, args, logger):
     all_benchmark_results = []
     for task in tasks[1:]:
-        if task.done():
-            result = task.result()
-            if result:
-                all_benchmark_results.append(result)
+        if task.done() and not task.cancelled():
+            try:
+                result = task.result()
+                if result:
+                    all_benchmark_results.append(result)
+            except Exception as e:
+                logger.warning(f"Task result retrieval failed: {e}")
 
     benchmark_results = all_benchmark_results
     end_time = time.time()
@@ -313,8 +316,8 @@ async def main():
     args = parse_args(logger)
     print_benchmark_config(args, logger)
     GLOBAL_CONFIG['round_time'] = args.round_time
-    if GLOBAL_CONFIG.get('exp_time', 1) < args.round_time * args.round:
-        GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 1.5
+    if GLOBAL_CONFIG.get('exp_time', 36000) < args.round_time * args.round:
+        GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 3
 
     servers = setup_servers_if_needed(args)
     setup_request_model_name(args)
