@@ -84,7 +84,7 @@ class BenchmarkClient:
         # 日志文件夹和文件名
         log_dir = "log"
         os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, f"client_{self.client_id}_run.log")
+        log_file = os.path.join(log_dir, f"client_{self.client_id.split("_")[0]}_run.log")
 
         logger = logging.getLogger(f"client_{self.client_id}")
         logger.setLevel(logging.INFO)
