@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
-import heapq
 
 
 class QueueStrategy(Enum):
@@ -18,8 +17,9 @@ class QueueStrategy(Enum):
 
 
 @dataclass
-class QueuedRequest:
+class  QueuedRequest:
     """队列中的请求对象"""
+    start_time: float
     client_id: str
     worker_id: str
     request_content: str
@@ -53,9 +53,13 @@ class RequestQueueManager:
         self.logger = self._setup_logger()
         
         # 不同策略的特定数据结构
-        self.priority_queue = []  # 用于优先级队列
+        self.priority_queue_list = []  # 改为列表，用于部分优先级
         self.round_robin_index = 0  # 轮询索引
         self.client_request_counts: Dict[str, int] = {}  # 每个客户端的请求计数
+        
+        # 部分优先级配置
+        self.priority_insert_multiplier = 1  # 优先级倍数，优先级N可以往前插N*multiplier个位置
+        self.max_priority_positions = 100  # 最大优先级插入位置限制
         
         # 统计信息
         self.total_requests_processed = 0
@@ -77,6 +81,17 @@ class RequestQueueManager:
     def set_openai_client(self, client):
         """设置OpenAI客户端"""
         self.openai_client = client
+    
+    def configure_partial_priority(self, insert_multiplier: int = 3, max_positions: int = 20):
+        """配置部分优先级参数
+        
+        Args:
+            insert_multiplier: 优先级倍数，优先级N可以往前插N*multiplier个位置
+            max_positions: 最大优先级插入位置限制
+        """
+        self.priority_insert_multiplier = insert_multiplier
+        self.max_priority_positions = max_positions
+        self.logger.info(f"Configured partial priority: multiplier={insert_multiplier}, max_positions={max_positions}")
         
     async def register_client(self, client_id: str, client_type: str = "unknown"):
         """注册客户端"""
@@ -91,13 +106,14 @@ class RequestQueueManager:
         self.client_request_counts[client_id] = 0
         self.logger.info(f"Registered client: {client_id} (type: {client_type})")
     
-    async def submit_request(self, client_id: str, worker_id: str, request_content: str, 
+    async def submit_request(self, start_time: float, client_id: str, worker_id: str, request_content: str, 
                            experiment: Any, priority: int = 0, estimated_tokens: int = 0) -> str:
         """提交请求到队列"""
         if client_id not in self.response_queues:
             await self.register_client(client_id)
         
         request = QueuedRequest(
+            start_time=start_time,
             client_id=client_id,
             worker_id=worker_id,
             request_content=request_content,
@@ -113,9 +129,26 @@ class RequestQueueManager:
         
         try:
             if self.strategy == QueueStrategy.PRIORITY:
-                # 优先级队列使用堆
-                heapq.heappush(self.priority_queue, request)
-                self.logger.debug(f"Added request to priority queue: {client_id} (priority: {priority})")
+                # 部分优先级策略：根据优先级往前插入几个位置
+                if priority > 0:
+                    insert_positions = min(priority * self.priority_insert_multiplier, self.max_priority_positions)
+                    # 确定插入位置
+                    if len(self.priority_queue_list) == 0:
+                        # 队列为空，直接添加
+                        self.priority_queue_list.append(request)
+                        insert_pos = 0
+                    else:
+                        # 计算插入位置：从队列末尾往前数insert_positions个位置
+                        current_queue_size = len(self.priority_queue_list)
+                        insert_pos = max(0, current_queue_size - insert_positions)
+                        
+                        # 插入到计算出的位置
+                        self.priority_queue_list.insert(insert_pos, request)
+                else:
+                    self.priority_queue_list.append(request)
+                
+                
+                self.logger.debug(f"Added request to priority queue: {client_id} (priority: {priority}, inserted at position: {insert_pos}/{len(self.priority_queue_list)})")
             else:
                 # 其他策略使用普通队列
                 await self.request_queue.put(request)
@@ -165,9 +198,9 @@ class RequestQueueManager:
             return None
     
     async def _get_priority_request(self) -> Optional[QueuedRequest]:
-        """优先级策略"""
-        if self.priority_queue:
-            return heapq.heappop(self.priority_queue)
+        """部分优先级策略：从列表头部取出请求"""
+        if self.priority_queue_list:
+            return self.priority_queue_list.pop(0)  # 从头部取出（FIFO基础上的部分优先级）
         return None
     
     async def _get_round_robin_request(self) -> Optional[QueuedRequest]:
@@ -209,7 +242,7 @@ class RequestQueueManager:
         try:
             # 调用原有的make_request函数
             from util.RequestUtil import make_request
-            result = await make_request(self.openai_client, request.experiment, request.request_content)
+            result = await make_request(self.openai_client, request.experiment, request.request_content, request.start_time)
             
             if result:
                 self.client_stats[request.client_id]['completed_requests'] += 1
@@ -288,7 +321,7 @@ class RequestQueueManager:
             'total_time': total_time,
             'requests_per_second': self.total_requests_processed / total_time if total_time > 0 else 0,
             'queue_size': self.request_queue.qsize(),
-            'priority_queue_size': len(self.priority_queue),
+            'priority_queue_size': len(self.priority_queue_list),
             'client_stats': self.client_stats.copy()
         }
         

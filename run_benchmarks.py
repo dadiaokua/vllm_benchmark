@@ -12,6 +12,7 @@ from plot.plotMain import plot_result
 from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
+from RequestQueueManager.RequestQueueManager import RequestQueueManager, QueueStrategy
 import logging
 
 
@@ -81,7 +82,6 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     queue_manager = None
     queue_task = None
     if args.exp.startswith("QUEUE_"):
-        from RequestQueueManager.RequestQueueManager import RequestQueueManager, QueueStrategy
         
         # 根据实验类型选择队列策略
         strategy_map = {

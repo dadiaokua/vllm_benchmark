@@ -70,6 +70,7 @@ class BenchmarkClient:
         self.fairness_ratio = 0
         self.credit = 0
         self.max_service = -1
+        self.priority = 0
 
         self.openAI_client = OpenAI_client
         self.monitor_done_event = asyncio.Event()

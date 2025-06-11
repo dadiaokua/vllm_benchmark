@@ -26,8 +26,9 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, experiment, request):
-    start_time = time.time()
+async def make_request(client, experiment, request, start_time=None):
+    if start_time is None:
+        start_time = time.time()
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
@@ -70,7 +71,8 @@ async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
             request_content=request_content,
             experiment=experiment,
             priority=priority,
-            estimated_tokens=estimated_tokens
+            estimated_tokens=estimated_tokens,
+            start_time=time.time()
         )
         
         # 等待响应
@@ -368,7 +370,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         estimated_tokens = len(request.split()) * 1.3  # 粗略估算
         
         # 设置优先级（短请求优先级更高）
-        priority = 1 if experiment.client.client_type == "short" else 2
+        priority = experiment.client.priority
         
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request, 

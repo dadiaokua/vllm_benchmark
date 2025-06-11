@@ -119,20 +119,18 @@ def get_average_success_rate(clients):
 def adjust_resources(client_low_fairness_ratio, client_high_fairness_ratio, delta, avg_success_rate):
     """统一的资源调整策略"""
     # 调整 time_ratio
-    client_high_fairness_ratio.time_ratio = client_high_fairness_ratio.time_ratio * (1 - delta)
-    client_low_fairness_ratio.time_ratio = client_low_fairness_ratio.time_ratio * (1 + delta)
-
-    client_low_fairness_ratio.max_service = client_low_fairness_ratio.service * delta / 2
+    # client_high_fairness_ratio.time_ratio = client_high_fairness_ratio.time_ratio * (1 - delta)
+    # client_low_fairness_ratio.time_ratio = client_low_fairness_ratio.time_ratio * (1 + delta)
+    #
+    # client_low_fairness_ratio.max_service = client_low_fairness_ratio.service * delta / 2
 
     # # 减少 client1 的 active_ratio - 无论负载如何
     # min_active_ratio = GLOBAL_CONFIG.get("MIN_ACTIVE_RATIO", 0.1)
     # client_low_fairness_ratio.active_ratio = max(client_low_fairness_ratio.active_ratio - delta, min_active_ratio)
     # client_high_fairness_ratio.active_ratio = min(client_high_fairness_ratio.active_ratio + delta, 1)
-
-    # 记录调整信息
-    print(f"Adjusted resources: client1.time_ratio={client_low_fairness_ratio.time_ratio:.2f}, "
-          f"client2.time_ratio={client_high_fairness_ratio.time_ratio:.2f}")
-        #   f"client1.active_ratio={client_low_fairness_ratio.active_ratio:.2f}")
+    priority_changes = int(delta * 10)
+    client_high_fairness_ratio.priority = client_high_fairness_ratio.priority + priority_changes
+    client_low_fairness_ratio.priority = client_low_fairness_ratio.priority - priority_changes
 
 
 def update_credits_and_counters(client1, client2, delta):
