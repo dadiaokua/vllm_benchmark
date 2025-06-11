@@ -1,6 +1,7 @@
 import asyncio
 import time
 from datetime import datetime
+from typing import Any
 
 import numpy as np
 import logging
@@ -54,6 +55,31 @@ async def make_request(client, experiment, request):
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
+        return None
+
+
+async def make_request_via_queue(queue_manager, client_id: str, worker_id: str, 
+                                request_content: str, experiment, priority: int = 0, 
+                                estimated_tokens: int = 0) -> Any:
+    """通过队列管理器发送请求"""
+    try:
+        # 提交请求到队列
+        request_id = await queue_manager.submit_request(
+            client_id=client_id,
+            worker_id=worker_id,
+            request_content=request_content,
+            experiment=experiment,
+            priority=priority,
+            estimated_tokens=estimated_tokens
+        )
+        
+        # 等待响应
+        result = await queue_manager.get_response(client_id, timeout=experiment.request_timeout + 10)
+        
+        return result
+        
+    except Exception as e:
+        experiment.logger.error(f"Error making request via queue: {e}")
         return None
 
 
@@ -279,6 +305,121 @@ async def process_request(client, experiment, request, worker_id, results, semap
                 return
                 
             result = await make_request(client, experiment, request)
+            if result:
+                output_tokens = result[0]  # 第一个元素是output_tokens
+                # 原子性地更新token计数
+                new_total = tokens_counter.add(output_tokens)
+                results.append(result)
+                
+                # 如果超过限制，记录日志
+                if hasattr(experiment, 'max_tokens') and new_total >= experiment.max_tokens:
+                    experiment.logger.info(f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
+                    
+        except Exception as e:
+            logging.error(
+                f"Worker {worker_id} {experiment.config_round + 1} round for client {experiment.client_index} raised an exception: {e}")
+
+
+async def worker_with_queue(experiment, queue_manager, semaphore, results, worker_id, worker_json, qmp_per_worker):
+    """使用队列管理器的worker函数"""
+    assert worker_json is not None, "sample_content is None!"
+    assert isinstance(worker_json, list), f"sample_content is not a list! type={type(worker_json)}"
+    assert len(worker_json) > 0, "sample_content is empty!"
+    
+    global_start_time = time.time()
+    request_count = 0
+    drift_time = 0
+    completed = 0
+    tasks = []
+    task_status = {}
+
+    # 创建线程安全的token计数器
+    tokens_counter = ThreadSafeCounter()
+
+    # 注册客户端到队列管理器
+    client_id = f"{experiment.client_id}_worker_{worker_id}"
+    await queue_manager.register_client(client_id, experiment.client.client_type)
+
+    # 预先计算所有请求的时间点
+    request_times = calculate_all_request_times(experiment, qmp_per_worker)
+
+    for target_time in request_times:
+        if time.time() - global_start_time >= experiment.round_time:
+            break
+        current_time = time.time()
+        if target_time <= current_time:
+            # 如果目标时间已过，直接发送请求
+            drift_time = current_time - target_time
+        else:
+            # 如果还没到目标时间，先sleep
+            sleep_time = target_time - current_time
+            if sleep_time > 0:
+                sleep_start = time.time()
+                await asyncio.sleep(sleep_time)
+            else:
+                experiment.logger.warning(
+                    f"[Worker {worker_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
+                continue
+
+        # 发送请求到队列（不管是否需要sleep，都会执行到这里）
+        request = random.choice(worker_json)
+        
+        # 估算token数量(简单估算)
+        estimated_tokens = len(request.split()) * 1.3  # 粗略估算
+        
+        # 设置优先级（短请求优先级更高）
+        priority = 1 if experiment.client.client_type == "short" else 2
+        
+        task = asyncio.create_task(
+            process_request_with_queue(queue_manager, client_id, experiment, request, 
+                                     worker_id, results, semaphore, tokens_counter, 
+                                     priority, int(estimated_tokens))
+        )
+        task_status[task] = {"start_time": time.time(), "status": "running"}
+        task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
+        tasks.append(task)
+        request_count += 1
+
+    elapsed = time.time() - global_start_time
+    remaining_time = experiment.round_time - elapsed
+    if remaining_time > 3:  # 只在剩余时间大于3秒时才sleep，防止误差
+        experiment.logger.warning(
+            f"[Worker {worker_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
+        await asyncio.sleep(remaining_time)
+    else:
+        experiment.logger.info(f"[Worker {worker_id}] Reached the end of the round time.")
+
+    # 等待所有任务完成
+    if tasks:
+        # 等待所有任务完成
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 计算总耗时
+        total_elapsed_time = time.time() - global_start_time
+        
+        completed = sum(1 for status in task_status.values() if status["status"] == "completed")
+        experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}")
+        experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
+        experiment.logger.info(f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+
+    return completed, drift_time, request_count
+
+
+async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore, tokens_counter, priority=0, estimated_tokens=0):
+    """使用队列管理器处理请求"""
+    async with semaphore:
+        try:
+            # 检查当前token总数是否超限
+            if hasattr(experiment, 'max_tokens') and tokens_counter.value >= experiment.max_tokens:
+                experiment.logger.info(f"Worker {worker_id} reached max tokens limit ({experiment.max_tokens})")
+                return
+                
+            result = await make_request_via_queue(
+                queue_manager, client_id, f"worker_{worker_id}", 
+                request, experiment, priority, estimated_tokens
+            )
+            
             if result:
                 output_tokens = result[0]  # 第一个元素是output_tokens
                 # 原子性地更新token计数

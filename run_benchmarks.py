@@ -11,7 +11,6 @@ from config.Config import GLOBAL_CONFIG
 from plot.plotMain import plot_result
 from util.BaseUtil import initialize_clients
 from util.FileSaveUtil import save_benchmark_results
-from util.JsonFormatterUtil import prepare_benchmark_data, make_prefix_list
 from util.TunnelUtil import setup_vllm_servers, stop_tunnel
 import logging
 
@@ -78,6 +77,29 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
         logger.error("vLLM URL is required")
         return None, None, None
 
+    # 创建共享的队列管理器（如果使用队列实验）
+    queue_manager = None
+    queue_task = None
+    if args.exp.startswith("QUEUE_"):
+        from RequestQueueManager.RequestQueueManager import RequestQueueManager, QueueStrategy
+        
+        # 根据实验类型选择队列策略
+        strategy_map = {
+            "QUEUE_FIFO": QueueStrategy.FIFO,
+            "QUEUE_PRIORITY": QueueStrategy.PRIORITY,
+            "QUEUE_ROUND_ROBIN": QueueStrategy.ROUND_ROBIN,
+            "QUEUE_SJF": QueueStrategy.SHORTEST_JOB_FIRST,
+            "QUEUE_FAIR": QueueStrategy.FAIR_SHARE
+        }
+        
+        strategy = strategy_map.get(args.exp, QueueStrategy.FIFO)
+        queue_manager = RequestQueueManager(strategy=strategy, max_queue_size=20000)
+        queue_manager.set_openai_client(openAI_client)
+        
+        # 启动队列管理器（在后台运行，不需要保存task引用）
+        asyncio.create_task(queue_manager.start_processing(num_workers=10))
+        logger.info(f"Created queue manager with strategy: {strategy.value}")
+
     # 打印调试信息
     logger.info(f"Processed short_qpm: {args.short_qpm}")
     logger.info(f"Processed long_qpm: {args.long_qpm}")
@@ -118,7 +140,8 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
             round=args.round,
             exp_type=args.exp,
             qpm_ratio=args.short_client_qpm_ratio,
-            latency_slo=int(slo_value)
+            latency_slo=int(slo_value),
+            queue_manager=queue_manager  # 传递队列管理器
         )
         clients.append(client)
         tasks.append(client.start())
@@ -149,7 +172,8 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
             round=args.round,
             exp_type=args.exp,
             qpm_ratio=args.long_client_qpm_ratio,
-            latency_slo=int(slo_value)
+            latency_slo=int(slo_value),
+            queue_manager=queue_manager  # 传递队列管理器
         )
         clients.append(client)
         tasks.append(client.start())
@@ -161,6 +185,11 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     # 创建监控任务
     monitor_task = asyncio.create_task(monitor())
     tasks.insert(0, monitor_task)
+
+    # 如果使用队列管理器，启动队列处理（但不加入tasks，让它在后台运行）
+    if queue_manager:
+        # 队列管理器已经在setup_benchmark_tasks中启动了，这里只需要记录一下
+        logger.info(f"Queue manager is running in background with strategy: {queue_manager.strategy.value}")
 
     return tasks, monitor_task, clients
 
@@ -329,6 +358,12 @@ async def main():
     start_time = time.time()
     tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue, logger)
 
+    # 获取队列管理器引用（如果存在）
+    queue_manager = None
+    if args.exp.startswith("QUEUE_") and clients:
+        # 从第一个客户端获取队列管理器引用
+        queue_manager = clients[0].queue_manager
+
     try:
         await run_benchmark_tasks(tasks, logger)
     except Exception as e:
@@ -342,6 +377,12 @@ async def main():
         stop_tunnel(server)
 
     await cancel_monitor_task(monitor_task, logger)
+    
+    # 停止队列管理器（如果存在）
+    if queue_manager:
+        await queue_manager.stop()
+        logger.info("Queue manager stopped")
+    
     plot_result(plot_data)
 
 

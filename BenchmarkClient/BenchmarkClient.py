@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import random
 
 from config.Config import GLOBAL_CONFIG
 from experiment.base_experiment import BaseExperiment
@@ -9,6 +8,8 @@ from experiment.base_experiment import BaseExperiment
 from experiment.FCFS_experiment import FCFSExperiment
 from experiment.LFS_experiment import LFSExperiment
 from experiment.VTC_experiment import VTCExperiment
+from experiment.queue_experiment import QueueExperiment
+from RequestQueueManager.RequestQueueManager import QueueStrategy
 
 
 class BenchmarkClient:
@@ -16,7 +17,8 @@ class BenchmarkClient:
 
     def __init__(self, client_type, client_index, qpm, port, api_key, tokenizer, exp_type,
                  distribution, request_timeout, concurrency, round, round_time, sleep, time_data,
-                 result_queue, formatted_json, OpenAI_client, qpm_ratio, latency_slo, use_time_data=0):
+                 result_queue, formatted_json, OpenAI_client, qpm_ratio, latency_slo, use_time_data=0, 
+                 queue_manager=None):
         """Initialize a benchmark client
 
         Args:
@@ -34,6 +36,7 @@ class BenchmarkClient:
             update_event (asyncio.Event): Event for notifying monitor
             use_time_data (int): Whether to use time data
             formatted_json (list): Formatted input JSON data
+            queue_manager: 共享的队列管理器实例
         """
         self.client_type = client_type
         self.client_index = client_index
@@ -55,6 +58,7 @@ class BenchmarkClient:
         self.round = round
         self.exp_type = exp_type
         self.latency_slo = latency_slo
+        self.queue_manager = queue_manager  # 添加队列管理器
 
         self.avg_latency_div_standard_latency = -1
         self.slo_violation_count = -1
@@ -161,14 +165,26 @@ class BenchmarkClient:
             "baseline": BaseExperiment,
             "LFS": LFSExperiment,
             "VTC": VTCExperiment,
-            "FCFS": FCFSExperiment
+            "FCFS": FCFSExperiment,
+            "QUEUE_FIFO": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.FIFO),
+            "QUEUE_PRIORITY": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.PRIORITY),
+            "QUEUE_ROUND_ROBIN": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.ROUND_ROBIN),
+            "QUEUE_SJF": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.SHORTEST_JOB_FIRST),
+            "QUEUE_FAIR": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.FAIR_SHARE),
         }
 
         # 创建并运行实验
-        experiment_class = experiment_types.get(self.exp_type, BaseExperiment)
-        self.experiment = experiment_class(self)
+        experiment_creator = experiment_types.get(self.exp_type, BaseExperiment)
+        if callable(experiment_creator) and self.exp_type.startswith("QUEUE_"):
+            self.experiment = experiment_creator(self)
+        else:
+            self.experiment = experiment_creator(self)
         await self.experiment.setup()
         result = await self.experiment.run(config_round)
+
+        # 如果是队列实验，在结束时进行清理
+        if hasattr(self.experiment, 'cleanup'):
+            await self.experiment.cleanup()
 
         return result
 
