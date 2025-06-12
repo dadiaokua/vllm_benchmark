@@ -14,6 +14,7 @@ class QueueStrategy(Enum):
     ROUND_ROBIN = "round_robin"  # 轮询
     SHORTEST_JOB_FIRST = "sjf"  # 最短作业优先
     FAIR_SHARE = "fair_share"  # 公平共享
+    VTC = "vtc"
 
 
 @dataclass
@@ -25,7 +26,6 @@ class  QueuedRequest:
     request_content: str
     experiment: Any
     priority: int = 0
-    estimated_tokens: int = 0
     submit_time: float = 0
     client_type: str = "unknown"  # short or long
     
@@ -47,6 +47,7 @@ class RequestQueueManager:
         self.request_queue = asyncio.Queue(maxsize=max_queue_size)
         self.response_queues: Dict[str, asyncio.Queue] = {}  # 每个客户端的响应队列
         self.client_stats: Dict[str, Dict] = {}  # 客户端统计信息
+        self.client_token_stats: Dict[str, Dict] = {}  # 每个客户端的token统计
         self.is_running = False
         self.workers_running = False
         self.openai_client = None
@@ -104,10 +105,15 @@ class RequestQueueManager:
             'client_type': client_type
         }
         self.client_request_counts[client_id] = 0
+        self.client_token_stats[client_id] = {
+            'total_input_tokens': 0,
+            'total_output_tokens': 0,
+            'actual_tokens_used': 0
+        }
         self.logger.info(f"Registered client: {client_id} (type: {client_type})")
     
     async def submit_request(self, start_time: float, client_id: str, worker_id: str, request_content: str, 
-                           experiment: Any, priority: int = 0, estimated_tokens: int = 0) -> str:
+                           experiment: Any, priority: int = 0) -> str:
         """提交请求到队列"""
         if client_id not in self.response_queues:
             await self.register_client(client_id)
@@ -119,7 +125,6 @@ class RequestQueueManager:
             request_content=request_content,
             experiment=experiment,
             priority=priority,
-            estimated_tokens=estimated_tokens,
             client_type=self.client_stats[client_id]['client_type']
         )
         
@@ -187,6 +192,8 @@ class RequestQueueManager:
             return await self._get_sjf_request()
         elif self.strategy == QueueStrategy.FAIR_SHARE:
             return await self._get_fair_share_request()
+        elif self.strategy == QueueStrategy.VTC:
+            return await self._get_vtc_request()
         else:
             return await self._get_fifo_request()
     
@@ -228,6 +235,50 @@ class RequestQueueManager:
         except asyncio.TimeoutError:
             return None
     
+    async def _get_vtc_request(self) -> Optional[QueuedRequest]:
+        """VTC策略：选择actual_tokens_used最小的客户端的最早请求"""
+        if self.request_queue.qsize() == 0:
+            return None
+        
+        # 收集所有请求
+        all_requests = []
+        temp_queue_size = self.request_queue.qsize()
+        
+        for _ in range(temp_queue_size):
+            try:
+                request = await asyncio.wait_for(self.request_queue.get(), timeout=0.1)
+                all_requests.append(request)
+            except asyncio.TimeoutError:
+                break
+        
+        if not all_requests:
+            return None
+        
+        # 找到tokens最少的请求
+        min_tokens_request = None
+        min_tokens = float('inf')
+        min_submit_time = float('inf')
+        
+        for request in all_requests:
+            client_tokens = self.client_token_stats.get(request.client_id, {}).get('actual_tokens_used', 0)
+            
+            # 优先选择tokens最少的，如果tokens相同则选择提交时间最早的
+            if (client_tokens < min_tokens or 
+                (client_tokens == min_tokens and request.submit_time < min_submit_time)):
+                min_tokens = client_tokens
+                min_submit_time = request.submit_time
+                min_tokens_request = request
+        
+        # 把除了选中请求外的其他请求放回队列
+        for request in all_requests:
+            if request != min_tokens_request:
+                await self.request_queue.put(request)
+        
+        if min_tokens_request:
+            self.logger.debug(f"VTC selected request from {min_tokens_request.client_id} (tokens: {min_tokens})")
+        
+        return min_tokens_request
+    
     async def _process_request(self, request: QueuedRequest) -> Any:
         """处理单个请求"""
         if not self.openai_client:
@@ -247,6 +298,17 @@ class RequestQueueManager:
             if result:
                 self.client_stats[request.client_id]['completed_requests'] += 1
                 self.total_requests_processed += 1
+                
+                # 从result中提取token信息并更新统计
+                # result格式: (output_tokens, elapsed_time, tokens_per_second, ttft, input_token_count, slo_compliance)
+                if len(result) >= 5:
+                    output_tokens, elapsed_time, tokens_per_second, ttft, input_token_count = result[:5]
+                    self.client_token_stats[request.client_id]['total_output_tokens'] += output_tokens
+                    self.client_token_stats[request.client_id]['total_input_tokens'] += input_token_count
+                    self.client_token_stats[request.client_id]['actual_tokens_used'] += (output_tokens + input_token_count)
+                    
+                    self.logger.debug(f"Updated token stats for {request.client_id}: "
+                                    f"input={input_token_count}, output={output_tokens}")
             else:
                 self.client_stats[request.client_id]['failed_requests'] += 1
             
@@ -322,7 +384,8 @@ class RequestQueueManager:
             'requests_per_second': self.total_requests_processed / total_time if total_time > 0 else 0,
             'queue_size': self.request_queue.qsize(),
             'priority_queue_size': len(self.priority_queue_list),
-            'client_stats': self.client_stats.copy()
+            'client_stats': self.client_stats.copy(),
+            'client_token_stats': self.client_token_stats.copy()
         }
         
         return stats
@@ -338,5 +401,14 @@ class RequestQueueManager:
         for client_id, client_stats in stats['client_stats'].items():
             avg_wait = client_stats['total_wait_time'] / max(client_stats['completed_requests'], 1)
             success_rate = client_stats['completed_requests'] / max(client_stats['total_requests'], 1) * 100
+            
+            # 获取token统计信息
+            token_stats = stats['client_token_stats'].get(client_id, {})
+            total_input = token_stats.get('total_input_tokens', 0)
+            total_output = token_stats.get('total_output_tokens', 0)
+            actual_used = token_stats.get('actual_tokens_used', 0)
+            
             self.logger.info(f"Client {client_id}: {client_stats['completed_requests']}/{client_stats['total_requests']} "
-                           f"(success: {success_rate:.1f}%, avg_wait: {avg_wait:.3f}s)") 
+                           f"(success: {success_rate:.1f}%, avg_wait: {avg_wait:.3f}s)")
+            self.logger.info(f"  Tokens - Input: {total_input}, Output: {total_output}, "
+                           f"Total Used: {actual_used}") 
