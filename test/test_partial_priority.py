@@ -53,7 +53,6 @@ async def test_partial_priority():
             request_content=f"low priority request {i}",
             experiment=mock_experiment,
             priority=0,
-            estimated_tokens=100,
             client_type="normal"
         )
         queue_manager.priority_queue_list.append(request)
@@ -70,7 +69,6 @@ async def test_partial_priority():
         request_content="high priority request",
         experiment=mock_experiment,
         priority=2,
-        estimated_tokens=50,
         client_type="short"
     )
     
@@ -98,7 +96,6 @@ async def test_partial_priority():
         request_content="another high priority request", 
         experiment=mock_experiment,
         priority=3,
-        estimated_tokens=30,
         client_type="short"
     )
     

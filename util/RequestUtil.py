@@ -60,8 +60,7 @@ async def make_request(client, experiment, request, start_time=None):
 
 
 async def make_request_via_queue(queue_manager, client_id: str, worker_id: str, 
-                                request_content: str, experiment, priority: int = 0, 
-                                estimated_tokens: int = 0) -> Any:
+                                request_content: str, experiment, priority: int = 0) -> Any:
     """通过队列管理器发送请求"""
     try:
         # 提交请求到队列
@@ -71,7 +70,6 @@ async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
             request_content=request_content,
             experiment=experiment,
             priority=priority,
-            estimated_tokens=estimated_tokens,
             start_time=time.time()
         )
         
@@ -366,16 +364,13 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         # 发送请求到队列（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
         
-        # 估算token数量(简单估算)
-        estimated_tokens = len(request.split()) * 1.3  # 粗略估算
-        
         # 设置优先级（短请求优先级更高）
         priority = experiment.client.priority
         
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request, 
                                      worker_id, results, semaphore, tokens_counter, 
-                                     priority, int(estimated_tokens))
+                                     priority)
         )
         task_status[task] = {"start_time": time.time(), "status": "running"}
         task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
@@ -408,7 +403,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
     return completed, drift_time, request_count
 
 
-async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore, tokens_counter, priority=0, estimated_tokens=0):
+async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore, tokens_counter, priority=0):
     """使用队列管理器处理请求"""
     async with semaphore:
         try:
@@ -419,7 +414,7 @@ async def process_request_with_queue(queue_manager, client_id, experiment, reque
                 
             result = await make_request_via_queue(
                 queue_manager, client_id, f"worker_{worker_id}", 
-                request, experiment, priority, estimated_tokens
+                request, experiment, priority
             )
             
             if result:
