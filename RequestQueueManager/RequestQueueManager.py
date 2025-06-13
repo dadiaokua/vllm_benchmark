@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from util.RequestUtil import make_request
 
 
 class QueueStrategy(Enum):
@@ -151,7 +152,7 @@ class RequestQueueManager:
                         self.priority_queue_list.insert(insert_pos, request)
                 else:
                     self.priority_queue_list.append(request)
-                
+                    insert_pos = len(self.priority_queue_list) - 1
                 
                 self.logger.debug(f"Added request to priority queue: {client_id} (priority: {priority}, inserted at position: {insert_pos}/{len(self.priority_queue_list)})")
             else:
@@ -279,42 +280,49 @@ class RequestQueueManager:
         
         return min_tokens_request
     
-    async def _process_request(self, request: QueuedRequest) -> Any:
+    async def _process_request(self, request: QueuedRequest, worker_name) -> Any:
         """处理单个请求"""
         if not self.openai_client:
             self.logger.error("OpenAI client not set")
             return None
+        else:
+            selected_client = self.openai_client[int(worker_name.split('-')[1]) % len(self.openai_client)]
         
         wait_time = time.time() - request.submit_time
         self.client_stats[request.client_id]['total_wait_time'] += wait_time
         
-        self.logger.debug(f"Processing request from {request.client_id} (waited: {wait_time:.3f}s)")
-        
         try:
             # 调用原有的make_request函数
-            from util.RequestUtil import make_request
-            result = await make_request(self.openai_client, request.experiment, request.request_content, request.start_time)
+            result = await make_request(
+                client=selected_client,
+                experiment=request.experiment,
+                request=request.request_content,
+                start_time=request.start_time
+            )
             
-            if result:
-                self.client_stats[request.client_id]['completed_requests'] += 1
-                self.total_requests_processed += 1
+            if result is None:
+                self.client_stats[request.client_id]['failed_requests'] += 1
+                return None
                 
+            self.client_stats[request.client_id]['completed_requests'] += 1
+            self.total_requests_processed += 1
+            
+            try:
                 # 从result中提取token信息并更新统计
                 # result格式: (output_tokens, elapsed_time, tokens_per_second, ttft, input_token_count, slo_compliance)
-                if len(result) >= 5:
-                    output_tokens, elapsed_time, tokens_per_second, ttft, input_token_count = result[:5]
+                if isinstance(result, (tuple, list)) and len(result) >= 6:  # 确保有6个返回值
+                    output_tokens = int(result[0])
+                    input_token_count = int(result[4])
+                    
                     self.client_token_stats[request.client_id]['total_output_tokens'] += output_tokens
                     self.client_token_stats[request.client_id]['total_input_tokens'] += input_token_count
                     self.client_token_stats[request.client_id]['actual_tokens_used'] += (output_tokens + input_token_count)
-                    
-                    self.logger.debug(f"Updated token stats for {request.client_id}: "
-                                    f"input={input_token_count}, output={output_tokens}")
-            else:
-                self.client_stats[request.client_id]['failed_requests'] += 1
+            except (ValueError, TypeError, IndexError) as e:
+                self.logger.error(f"Error processing result data: {str(e)}, result: {result}")
             
             return result
         except Exception as e:
-            self.logger.error(f"Error processing request from {request.client_id}: {e}")
+            self.logger.error(f"Error processing request from {request.client_id}: {str(e)}")
             self.client_stats[request.client_id]['failed_requests'] += 1
             return None
     
@@ -355,15 +363,24 @@ class RequestQueueManager:
                     await asyncio.sleep(0.1)  # 没有请求时短暂休眠
                     continue
                 
-                # 处理请求
-                result = await self._process_request(request)
+                if not isinstance(request, QueuedRequest):
+                    self.logger.error(f"Invalid request type: {type(request)}")
+                    continue
                 
-                # 将结果发送到客户端的响应队列
-                if request.client_id in self.response_queues:
-                    await self.response_queues[request.client_id].put(result)
+                # 处理请求
+                try:
+                    result = await self._process_request(request, worker_name)
+                    
+                    # 将结果发送到客户端的响应队列
+                    if request.client_id in self.response_queues:
+                        await self.response_queues[request.client_id].put(result)
+                except Exception as e:
+                    self.logger.error(f"Error in _process_request: {str(e)}")
+                    if request.client_id in self.response_queues:
+                        await self.response_queues[request.client_id].put(None)
                 
             except Exception as e:
-                self.logger.error(f"Worker {worker_name} error: {e}")
+                self.logger.error(f"Worker {worker_name} error: {str(e)}")
                 await asyncio.sleep(1.0)
         
         self.logger.info(f"Worker {worker_name} stopped")
