@@ -172,6 +172,7 @@ class BenchmarkClient:
             "QUEUE_ROUND_ROBIN": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.ROUND_ROBIN),
             "QUEUE_SJF": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.SHORTEST_JOB_FIRST),
             "QUEUE_FAIR": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.FAIR_SHARE),
+            "QUEUE_VTC": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.VTC),
         }
 
         # 创建并运行实验
