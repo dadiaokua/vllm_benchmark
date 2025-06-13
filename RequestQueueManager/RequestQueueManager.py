@@ -428,4 +428,35 @@ class RequestQueueManager:
             self.logger.info(f"Client {client_id}: {client_stats['completed_requests']}/{client_stats['total_requests']} "
                            f"(success: {success_rate:.1f}%, avg_wait: {avg_wait:.3f}s)")
             self.logger.info(f"  Tokens - Input: {total_input}, Output: {total_output}, "
-                           f"Total Used: {actual_used}") 
+                           f"Total Used: {actual_used}")
+    
+    async def cleanup(self):
+        """清理资源"""
+        self.logger.info("Cleaning up queue manager resources")
+        
+        # 只停止当前实验的workers
+        self.workers_running = False
+        
+        # 清空队列
+        while not self.request_queue.empty():
+            try:
+                self.request_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        
+        # 清空优先级队列
+        self.priority_queue_list.clear()
+        
+        # 重置统计信息
+        self.total_requests_processed = 0
+        self.start_time = None
+        
+        # 重置所有客户端的token统计
+        for client_id in self.client_token_stats:
+            self.client_token_stats[client_id] = {
+                'total_input_tokens': 0,
+                'total_output_tokens': 0,
+                'actual_tokens_used': 0
+            }
+        
+        self.logger.info("Queue manager cleanup completed") 

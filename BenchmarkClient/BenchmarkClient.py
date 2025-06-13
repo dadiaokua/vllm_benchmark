@@ -115,7 +115,7 @@ class BenchmarkClient:
             # Run benchmark with current configuration
             self.qpm = self.qpm * self.qpm_ratio
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
-            result = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
+            result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
 
             if i != 0:
                 # 等待 monitor 通知处理完成
@@ -124,6 +124,7 @@ class BenchmarkClient:
                 if i == 1:
                     self.results[-1]["fairness_ratio"] = self.fairness_ratio
 
+            benchmark_experiment.cleanup()
 
             # Store and update results
             if result:
@@ -184,11 +185,7 @@ class BenchmarkClient:
         await self.experiment.setup()
         result = await self.experiment.run(config_round)
 
-        # 如果是队列实验，在结束时进行清理
-        if hasattr(self.experiment, 'cleanup'):
-            await self.experiment.cleanup()
-
-        return result
+        return result, self.experiment
 
     def start(self):
         """Start the benchmark task"""

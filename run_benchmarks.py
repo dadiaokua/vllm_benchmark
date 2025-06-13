@@ -191,7 +191,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
         # 队列管理器已经在setup_benchmark_tasks中启动了，这里只需要记录一下
         logger.info(f"Queue manager is running in background with strategy: {queue_manager.strategy.value}")
 
-    return tasks, monitor_task, clients
+    return tasks, monitor_task, clients, queue_manager
 
 
 def setup_logger():
@@ -356,13 +356,7 @@ async def main():
     request_queue = asyncio.Queue()
 
     start_time = time.time()
-    tasks, monitor_task, clients = await setup_benchmark_tasks(args, all_results, request_queue, logger)
-
-    # 获取队列管理器引用（如果存在）
-    queue_manager = None
-    if args.exp.startswith("QUEUE_") and clients:
-        # 从第一个客户端获取队列管理器引用
-        queue_manager = clients[0].queue_manager
+    tasks, monitor_task, clients, queue_manager = await setup_benchmark_tasks(args, all_results, request_queue, logger)
 
     try:
         await run_benchmark_tasks(tasks, logger)

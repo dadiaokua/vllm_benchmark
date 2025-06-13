@@ -135,6 +135,11 @@ class QueueExperiment(BaseExperiment):
     async def cleanup(self):
         """清理资源"""
         if self.queue_manager and self.queue_manager.is_running:
+            await self.queue_manager.cleanup()
+            self.logger.info("Queue manager cleaned up")
+
+    async def end(self):
+        if self.queue_manager and self.queue_manager.is_running:
             await self.queue_manager.stop()
             self.logger.info("Queue manager stopped")
 
