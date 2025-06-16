@@ -28,10 +28,15 @@ async def process_stream(stream):
 
 async def make_request(client, experiment, request, start_time=None):
     if start_time is None:
-        start_time = time.time()
+        # 如果没有start_time，说明是直接发送的请求，使用完整的超时时间
         time_out = experiment.request_timeout
     else:
-        time_out = time.time() - start_time
+        # 如果有start_time，说明请求已经在队列中等待了一段时间
+        # 计算已经过去的时间（包括排队时间）
+        elapsed_time = time.time() - start_time
+        # 剩余的超时时间需要减去已经过去的时间
+        time_out = max(0, experiment.request_timeout - elapsed_time)
+    
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
