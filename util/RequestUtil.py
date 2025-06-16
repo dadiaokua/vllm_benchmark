@@ -29,6 +29,9 @@ async def process_stream(stream):
 async def make_request(client, experiment, request, start_time=None):
     if start_time is None:
         start_time = time.time()
+        time_out = experiment.request_timeout
+    else:
+        time_out = time.time() - start_time
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
@@ -37,7 +40,7 @@ async def make_request(client, experiment, request, start_time=None):
             max_tokens=experiment.output_tokens,
             stream=True
         )
-        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=experiment.request_timeout)
+        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=time_out)
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None

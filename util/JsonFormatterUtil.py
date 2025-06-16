@@ -70,7 +70,7 @@ class QAJsonFormatter:
                     if client_type == "long":
                         if len(data["conversations"]) >= 2:
                             prompt = data["conversations"][0]["value"]
-                        model_max_len = min(tokenizer.model_max_length, 3000)  # 防止意外
+                        model_max_len = 8124  # 防止意外
                         tokenized_prompt = tokenizer(prompt, truncation=True, max_length=model_max_len - 256,
                                               return_tensors="pt").input_ids[0]
                         if len(tokenized_prompt) > (maxlen):
@@ -80,7 +80,7 @@ class QAJsonFormatter:
                     else:
                         if len(data["conversations"]) >= 2:
                             prompt = data["conversations"][0]["value"]
-                        model_max_len = min(tokenizer.model_max_length, 3000)  # 防止意外
+                        model_max_len = 2048  # 防止意外
                         tokenized_prompt = tokenizer(prompt, truncation=True, max_length=model_max_len - 256,
                                                      return_tensors="pt").input_ids[0]
                         if len(tokenized_prompt) > (maxlen / 4):
@@ -130,19 +130,10 @@ async def prepare_benchmark_data(client_type, tokenizer):
     # Format and filter data
     try:
         formatter = QAJsonFormatter()
-        max_samples = 10000
+        max_samples = 2000
         formatted_json = await formatter.format_qa_json(
-            tokenizer, dataset2prompt, GLOBAL_CONFIG.get('prompt_max_len', 256), jsonl_files, data_path, max_samples,
+            tokenizer, dataset2prompt, GLOBAL_CONFIG.get('prompt_max_len', 10000), jsonl_files, data_path, max_samples,
             client_type)
-
-        # Filter by length
-        filtered_json = []
-        str_count = 0
-        for item in formatted_json:
-            if len(str(item)) < 4000:
-                str_count += 1
-                filtered_json.append(item)
-        print(f'request count: {str_count}')
 
         return formatted_json, time_data
     except Exception as e:
