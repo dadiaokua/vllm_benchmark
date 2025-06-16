@@ -28,14 +28,7 @@ async def process_stream(stream):
 
 async def make_request(client, experiment, request, start_time=None):
     if start_time is None:
-        # 如果没有start_time，说明是直接发送的请求，使用完整的超时时间
-        time_out = experiment.request_timeout
-    else:
-        # 如果有start_time，说明请求已经在队列中等待了一段时间
-        # 计算已经过去的时间（包括排队时间）
-        elapsed_time = time.time() - start_time
-        # 剩余的超时时间需要减去已经过去的时间
-        time_out = max(0, experiment.request_timeout - elapsed_time)
+        start_time = time.time()
     
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
@@ -45,7 +38,7 @@ async def make_request(client, experiment, request, start_time=None):
             max_tokens=experiment.output_tokens,
             stream=True
         )
-        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=time_out)
+        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=experiment.request_timeout)
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
@@ -60,7 +53,7 @@ async def make_request(client, experiment, request, start_time=None):
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
             
-        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {time_out} seconds (Total timeouts: {experiment.timeout_count})")
+        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {experiment.request_timeout} seconds (Total timeouts: {experiment.timeout_count})")
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
