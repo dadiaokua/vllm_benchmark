@@ -277,7 +277,8 @@ def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm
         else:
             values = [result[metric_key] for result in client_results]
 
-        is_duplicate = any(np.allclose(values, prev, atol=1e-4) for prev in plotted_value_sets)
+        # 检查是否有相同长度和相同值的数组，避免形状不匹配的错误
+        is_duplicate = any(len(values) == len(prev) and np.allclose(values, prev, atol=1e-4) for prev in plotted_value_sets)
         if is_duplicate:
             x_vals = [j + 0.02 for j in range(len(time))]  # 偏移一点
         else:
@@ -311,7 +312,8 @@ def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm
         else:
             values = [result[metric_key] for result in client_results]
 
-        is_duplicate = any(np.allclose(values, prev, atol=1e-4) for prev in plotted_value_sets)
+        # 检查是否有相同长度和相同值的数组，避免形状不匹配的错误
+        is_duplicate = any(len(values) == len(prev) and np.allclose(values, prev, atol=1e-4) for prev in plotted_value_sets)
         if is_duplicate:
             x_vals = [j + 0.02 for j in range(len(time))]  # 偏移一点
         else:
