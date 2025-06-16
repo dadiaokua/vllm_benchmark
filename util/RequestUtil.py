@@ -60,7 +60,7 @@ async def make_request(client, experiment, request, start_time=None):
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
             
-        experiment.logger.warning(f"Request timed out after {time_out} seconds (Total timeouts: {experiment.timeout_count})")
+        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {time_out} seconds (Total timeouts: {experiment.timeout_count})")
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
