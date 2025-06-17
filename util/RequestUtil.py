@@ -29,7 +29,7 @@ async def process_stream(stream):
 async def make_request(client, experiment, request, start_time=None):
     if start_time is None:
         start_time = time.time()
-    
+
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
@@ -38,13 +38,14 @@ async def make_request(client, experiment, request, start_time=None):
             max_tokens=experiment.output_tokens,
             stream=True
         )
-        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream), timeout=experiment.request_timeout)
+        first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream),
+                                                                 timeout=experiment.request_timeout)
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
-        
+
         return output_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
@@ -53,16 +54,17 @@ async def make_request(client, experiment, request, start_time=None):
         # 记录timeout次数
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
-            
-        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
+
+        experiment.logger.warning(
+            f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
         return None
 
 
-async def make_request_via_queue(queue_manager, client_id: str, worker_id: str, 
-                                request_content: str, experiment, priority: int = 0) -> Any:
+async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
+                                 request_content: str, experiment, priority: int = 0) -> Any:
     """通过队列管理器发送请求"""
     try:
         # 提交请求到队列
@@ -74,12 +76,12 @@ async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
             priority=priority,
             start_time=time.time()
         )
-        
+
         # 等待响应
         result = await queue_manager.get_response(client_id, timeout=1000)
-        
+
         return result
-        
+
     except Exception as e:
         experiment.logger.error(f"Error making request via queue: {e}")
         return None
@@ -101,19 +103,20 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     round_time = experiment.round_time
     distribution = experiment.distribution
     time_ratio = experiment.time_ratio
-    
+
     # 预留缓冲时间给最后的请求完成
     buffer_time = round_time * 0.5
     # 确保缓冲时间不超过round_time的30%
     buffer_time = min(buffer_time, round_time * 0.3)
     # 实际可用的发送时间窗口
     effective_round_time = round_time - buffer_time
-    
-    experiment.logger.info(f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
-    
+
+    experiment.logger.info(
+        f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
+
     # 将每分钟请求数转换为每秒请求数
     rate_per_second = rate_lambda / 60.0
-    
+
     if rate_per_second <= 0:
         rate_per_second = 0.001
 
@@ -129,14 +132,14 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 生成所有请求的时间点
     request_times = []
     global_start_time = time.time()  # 使用当前时间作为全局开始时间
-    
+
     # 添加一个随机的开始偏移，避免所有client同时开始
     start_offset = random.uniform(0, min(5.0, effective_round_time * 0.1))  # 最多5秒或effective_round_time的10%
 
     # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
     current_offset = start_offset  # 从随机偏移开始
-    
+
     for i in range(estimated_requests):
         # 增加分布的随机性
         if distribution.lower() == "poisson":
@@ -152,7 +155,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
         else:
             # 均匀分布，增加变化范围
             variation_range = random.uniform(0.3, 0.7)  # 随机变化范围
-            interval = base_interval + float(np.random.uniform(-base_interval * variation_range, 
+            interval = base_interval + float(np.random.uniform(-base_interval * variation_range,
                                                                base_interval * variation_range))
             interval = max(0.001, interval)  # 确保间隔为正
 
@@ -161,6 +164,17 @@ def calculate_all_request_times(experiment, qmp_per_worker):
             break
         base_times.append(current_offset)
 
+        #shuffled_all_request_times(base_times, start_offset, effective_round_time, time_ratio, global_start_time, experiment, buffer_time)
+
+        for base_time in base_times:
+            request_time = global_start_time + base_time
+            request_times.append(request_time)
+
+    return request_times
+
+
+def shuffled_all_request_times(base_times, start_offset, effective_round_time, time_ratio, global_start_time,
+                               experiment, buffer_time):
     # 对时间点进行轻微的随机打散，但保持总体顺序
     shuffled_times = []
     for i, base_offset in enumerate(base_times):
@@ -168,7 +182,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
         jitter = random.uniform(-0.5, 0.5)  # ±0.5秒的抖动
         jittered_offset = base_offset + jitter
         jittered_offset = max(start_offset, min(effective_round_time, jittered_offset))  # 确保在有效范围内
-        
+
         # 应用非线性映射（在有效时间窗口内）
         if time_ratio > 1 and jittered_offset <= effective_round_time:
             # 使用sigmoid类函数进行平滑映射
@@ -193,13 +207,13 @@ def calculate_all_request_times(experiment, qmp_per_worker):
         # 随机选择20%的时间点进行轻微重排
         num_to_shuffle = max(1, len(shuffled_times) // 5)
         indices_to_shuffle = random.sample(range(len(shuffled_times)), num_to_shuffle)
-        
+
         # 对选中的时间点进行局部随机化（确保仍在有效时间窗口内）
         for idx in indices_to_shuffle:
             # 在附近范围内随机调整时间
             if idx > 0 and idx < len(shuffled_times) - 1:
-                min_time = (shuffled_times[idx-1] + shuffled_times[idx]) / 2
-                max_time = (shuffled_times[idx] + shuffled_times[idx+1]) / 2
+                min_time = (shuffled_times[idx - 1] + shuffled_times[idx]) / 2
+                max_time = (shuffled_times[idx] + shuffled_times[idx + 1]) / 2
                 # 确保不超出有效时间窗口
                 max_time = min(max_time, global_start_time + effective_round_time)
                 if min_time < max_time:
@@ -207,15 +221,17 @@ def calculate_all_request_times(experiment, qmp_per_worker):
 
     # 确保时间点仍然是递增的
     shuffled_times.sort()
-    
+
     # 最终检查：确保所有时间点都在有效窗口内
     shuffled_times = [t for t in shuffled_times if t <= global_start_time + effective_round_time]
-    
-    experiment.logger.info(f"Generated {len(shuffled_times)} request times in {effective_round_time}s window, buffer: {buffer_time}s")
+
+    experiment.logger.info(
+        f"Generated {len(shuffled_times)} request times in {effective_round_time}s window, buffer: {buffer_time}s")
     if shuffled_times:
         last_request_time = shuffled_times[-1] - global_start_time
-        experiment.logger.info(f"Last request at: {last_request_time:.2f}s, buffer remaining: {effective_round_time - last_request_time:.2f}s")
-    
+        experiment.logger.info(
+            f"Last request at: {last_request_time:.2f}s, buffer remaining: {effective_round_time - last_request_time:.2f}s")
+
     return shuffled_times
 
 
@@ -285,21 +301,22 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     # 等待所有任务完成
     if tasks:
         # 等待取消操作完成
-        #await asyncio.gather(*tasks, return_exceptions=True)
-        
+        # await asyncio.gather(*tasks, return_exceptions=True)
+
         # 计算总耗时
         total_elapsed_time = time.time() - global_start_time
-        
+
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
-        
+
         experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
         experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
         experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
-        experiment.logger.info(f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+        experiment.logger.info(
+            f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
         for task in tasks:
             task.cancel()
-            
+
     return completed, drift_time, request_count
 
 
@@ -310,18 +327,19 @@ async def process_request(client, experiment, request, worker_id, results, semap
             if hasattr(experiment, 'max_tokens') and tokens_counter.value >= experiment.max_tokens:
                 experiment.logger.info(f"Worker {worker_id} reached max tokens limit ({experiment.max_tokens})")
                 return
-                
+
             result = await make_request(client, experiment, request)
             if result:
                 output_tokens = result[0]  # 第一个元素是output_tokens
                 # 原子性地更新token计数
                 new_total = tokens_counter.add(output_tokens)
                 results.append(result)
-                
+
                 # 如果超过限制，记录日志
                 if hasattr(experiment, 'max_tokens') and new_total >= experiment.max_tokens:
-                    experiment.logger.info(f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
-                    
+                    experiment.logger.info(
+                        f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
+
         except Exception as e:
             logging.error(
                 f"Worker {worker_id} {experiment.config_round + 1} round for client {experiment.client_index} raised an exception: {e}")
@@ -332,7 +350,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
     assert worker_json is not None, "sample_content is None!"
     assert isinstance(worker_json, list), f"sample_content is not a list! type={type(worker_json)}"
     assert len(worker_json) > 0, "sample_content is empty!"
-    
+
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
@@ -371,14 +389,14 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
         # 发送请求到队列（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
-        
+
         # 设置优先级（短请求优先级更高）
         priority = experiment.client.priority
-        
+
         task = asyncio.create_task(
-            process_request_with_queue(queue_manager, client_id, experiment, request, 
-                                     worker_id, results, semaphore, tokens_counter, 
-                                     priority)
+            process_request_with_queue(queue_manager, client_id, experiment, request,
+                                       worker_id, results, semaphore, tokens_counter,
+                                       priority)
         )
         task_status[task] = {"start_time": time.time(), "status": "running"}
         task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
@@ -396,25 +414,27 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
     # 等待所有任务完成
     if tasks:
-        #await asyncio.gather(*tasks, return_exceptions=True)
-        
+        # await asyncio.gather(*tasks, return_exceptions=True)
+
         # 计算总耗时
         total_elapsed_time = time.time() - global_start_time
-        
+
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
-        
+
         experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
         experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
         experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
-        experiment.logger.info(f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
-        
+        experiment.logger.info(
+            f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+
         for task in tasks:
             task.cancel()
     return completed, drift_time, request_count
 
 
-async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore, tokens_counter, priority=0):
+async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore,
+                                     tokens_counter, priority=0):
     """使用队列管理器处理请求"""
     async with semaphore:
         try:
@@ -422,22 +442,23 @@ async def process_request_with_queue(queue_manager, client_id, experiment, reque
             if hasattr(experiment, 'max_tokens') and tokens_counter.value >= experiment.max_tokens:
                 experiment.logger.info(f"Worker {worker_id} reached max tokens limit ({experiment.max_tokens})")
                 return
-                
+
             result = await make_request_via_queue(
-                queue_manager, client_id, f"worker_{worker_id}", 
+                queue_manager, client_id, f"worker_{worker_id}",
                 request, experiment, priority
             )
-            
+
             if result:
                 output_tokens = result[0]  # 第一个元素是output_tokens
                 # 原子性地更新token计数
                 new_total = tokens_counter.add(output_tokens)
                 results.append(result)
-                
+
                 # 如果超过限制，记录日志
                 if hasattr(experiment, 'max_tokens') and new_total >= experiment.max_tokens:
-                    experiment.logger.info(f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
-                    
+                    experiment.logger.info(
+                        f"Worker {worker_id} reached max tokens after processing: {new_total}/{experiment.max_tokens}")
+
         except Exception as e:
             logging.error(
                 f"Worker {worker_id} {experiment.config_round + 1} round for client {experiment.client_index} raised an exception: {e}")
@@ -447,20 +468,22 @@ async def force_cancel_all_tasks(tasks, experiment):
     """强制取消所有任务的辅助函数"""
     if not tasks:
         return
-    
+
     experiment.logger.info(f"Force cancelling {len(tasks)} tasks")
-    
+
     # 立即取消所有任务
     for task in tasks:
         if not task.done():
             task.cancel()
-    
+
     # 等待所有取消操作完成
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     # 统计取消结果
     cancelled_count = sum(1 for task in tasks if task.cancelled())
     completed_count = sum(1 for task in tasks if task.done() and not task.cancelled())
-    exception_count = sum(1 for result in results if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError))
-    
-    experiment.logger.info(f"Task cancellation complete - Cancelled: {cancelled_count}, Completed: {completed_count}, Exceptions: {exception_count}")
+    exception_count = sum(
+        1 for result in results if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError))
+
+    experiment.logger.info(
+        f"Task cancellation complete - Cancelled: {cancelled_count}, Completed: {completed_count}, Exceptions: {exception_count}")
