@@ -17,4 +17,5 @@ GLOBAL_CONFIG = {
     "max_exchange_times": 1,
     "prompt_max_len": 10000,
     "request_model_name": "",
+    "buffer_ratio": 0.5
 }

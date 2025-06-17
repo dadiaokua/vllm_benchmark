@@ -105,8 +105,8 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     time_ratio = experiment.time_ratio
 
     # 预留缓冲时间给最后的请求完成
-    buffer_time = round_time * 0.5
-    # 确保缓冲时间不超过round_time的30%
+    buffer_time = round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5)
+    # 确保缓冲时间不超过round_time的50%
     buffer_time = min(buffer_time, round_time * 0.5)
     # 实际可用的发送时间窗口
     effective_round_time = round_time - buffer_time
@@ -164,7 +164,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
             break
         base_times.append(current_offset)
 
-        #shuffled_all_request_times(base_times, start_offset, effective_round_time, time_ratio, global_start_time, experiment, buffer_time)
+        # shuffled_all_request_times(base_times, start_offset, effective_round_time, time_ratio, global_start_time, experiment, buffer_time)
 
         for base_time in base_times:
             request_time = global_start_time + base_time
@@ -291,7 +291,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
 
     elapsed = time.time() - global_start_time
     remaining_time = experiment.round_time - elapsed
-    if remaining_time > 3:  # 只在剩余时间大于3秒时才sleep，防止误差
+    if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:
         experiment.logger.warning(
             f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
@@ -405,7 +405,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
     elapsed = time.time() - global_start_time
     remaining_time = experiment.round_time - elapsed
-    if remaining_time > 3:  # 只在剩余时间大于3秒时才sleep，防止误差
+    if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:  # 只在剩余时间大于3秒时才sleep，防止误差
         experiment.logger.warning(
             f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
