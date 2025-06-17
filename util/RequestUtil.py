@@ -107,7 +107,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 预留缓冲时间给最后的请求完成
     buffer_time = round_time * 0.5
     # 确保缓冲时间不超过round_time的30%
-    buffer_time = min(buffer_time, round_time * 0.3)
+    buffer_time = min(buffer_time, round_time * 0.5)
     # 实际可用的发送时间窗口
     effective_round_time = round_time - buffer_time
 
