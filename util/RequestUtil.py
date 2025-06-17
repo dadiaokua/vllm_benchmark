@@ -76,7 +76,7 @@ async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
         )
         
         # 等待响应
-        result = await queue_manager.get_response(client_id, timeout=experiment.request_timeout + 10)
+        result = await queue_manager.get_response(client_id, timeout=1000)
         
         return result
         
