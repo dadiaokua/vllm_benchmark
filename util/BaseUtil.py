@@ -33,9 +33,9 @@ def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, cl
         exp_type: 实验类型
     """
     # 1. 计算调整量
-    if exp_type == "LFS":
+    if "LFS" in exp_type:
         delta = calculate_adjustment_delta_lfs(client_low_fairness_ratio, client_high_fairness_ratio)
-    elif exp_type == "VTC" or exp_type == "FCFS":
+    elif "VTC" in exp_type or "FCFS" in exp_type:
         delta = calculate_adjustment_delta_vtc(client_low_fairness_ratio, client_high_fairness_ratio)
     else:
         print(f"Invalid experiment type: {exp_type}")
@@ -69,8 +69,10 @@ def exchange_resources(client_low_fairness_ratio, client_high_fairness_ratio, cl
     exchange_record = {
         "round": len(client_low_fairness_ratio.results),
         "timestamp": datetime.now().strftime("%m_%d_%H_%M_%S"),
-        "client1_id": client_low_fairness_ratio.client_id if hasattr(client_low_fairness_ratio, 'client_id') else str(client_low_fairness_ratio),
-        "client2_id": client_high_fairness_ratio.client_id if hasattr(client_high_fairness_ratio, 'client_id') else str(client_high_fairness_ratio),
+        "client1_id": client_low_fairness_ratio.client_id if hasattr(client_low_fairness_ratio, 'client_id') else str(
+            client_low_fairness_ratio),
+        "client2_id": client_high_fairness_ratio.client_id if hasattr(client_high_fairness_ratio, 'client_id') else str(
+            client_high_fairness_ratio),
         "gap_fairness_ratio": f"abs({client_low_fairness_ratio.fairness_ratio} - {client_high_fairness_ratio.fairness_ratio}) = {abs(client_low_fairness_ratio.fairness_ratio - client_high_fairness_ratio.fairness_ratio)}",
         "delta": delta,
         "client1_new_time_ratio": client_low_fairness_ratio.time_ratio,
@@ -154,20 +156,20 @@ def selectClients_LFS(clients):
 
     # 使用列表推导式快速过滤出可交换的客户端
     eligible_clients = [
-        client for client in clients 
+        client for client in clients
         if client.exchange_Resources_Times < GLOBAL_CONFIG.get('max_exchange_times', 3)
     ]
-    
+
     if len(eligible_clients) < 2:
         return None, None
 
     # 按fairness_ratio排序
     eligible_clients.sort(key=lambda x: x.fairness_ratio)
-    
+
     # 使用双指针快速找到最大差距对
     max_diff = 0
     best_pair = None
-    
+
     # 从两端向中间移动，找到最大差距对
     left, right = 0, len(eligible_clients) - 1
     while left < right:
@@ -177,8 +179,8 @@ def selectClients_LFS(clients):
                 max_diff = diff
                 best_pair = (left, right)
             # 移动差距较小的一端
-            if (eligible_clients[left + 1].fairness_ratio - eligible_clients[left].fairness_ratio < 
-                eligible_clients[right].fairness_ratio - eligible_clients[right - 1].fairness_ratio):
+            if (eligible_clients[left + 1].fairness_ratio - eligible_clients[left].fairness_ratio <
+                    eligible_clients[right].fairness_ratio - eligible_clients[right - 1].fairness_ratio):
                 left += 1
             else:
                 right -= 1
@@ -191,13 +193,13 @@ def selectClients_LFS(clients):
 
     # 在找到的范围内选择最优客户端
     low_idx, high_idx = best_pair
-    
+
     # 使用min和key函数快速找到最优客户端
     best_low = min(
         eligible_clients[:low_idx + 1],
         key=lambda x: (x.exchange_Resources_Times, x.credit)
     )
-    
+
     best_high = min(
         eligible_clients[high_idx:],
         key=lambda x: (x.exchange_Resources_Times, -x.credit)

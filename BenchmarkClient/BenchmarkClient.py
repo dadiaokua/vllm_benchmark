@@ -168,7 +168,7 @@ class BenchmarkClient:
             "LFS": LFSExperiment,
             "VTC": VTCExperiment,
             "FCFS": FCFSExperiment,
-            "QUEUE_FIFO": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.FIFO),
+            "QUEUE_FCFS": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.FIFO),
             "QUEUE_LFS": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.PRIORITY),
             "QUEUE_ROUND_ROBIN": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.ROUND_ROBIN),
             "QUEUE_SJF": lambda client: QueueExperiment(client, self.queue_manager, QueueStrategy.SHORTEST_JOB_FIRST),

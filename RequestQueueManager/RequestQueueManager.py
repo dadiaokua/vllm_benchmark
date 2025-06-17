@@ -178,7 +178,7 @@ class RequestQueueManager:
             )
             return response
         except asyncio.TimeoutError:
-            self.logger.warning(f"Response timeout after {timeout} seconds for client {client_id}")
+            self.logger.warning(f"Response timeout for client {client_id}")
             return None
     
     async def _get_next_request(self) -> Optional[QueuedRequest]:
