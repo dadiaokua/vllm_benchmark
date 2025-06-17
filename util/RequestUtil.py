@@ -49,11 +49,12 @@ async def make_request(client, experiment, request, start_time=None):
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
     except asyncio.TimeoutError:
+        end_time = time.time()
         # 记录timeout次数
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
             
-        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {experiment.request_timeout} seconds (Total timeouts: {experiment.timeout_count})")
+        experiment.logger.warning(f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
