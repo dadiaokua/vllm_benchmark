@@ -97,6 +97,11 @@ class RequestQueueManager:
         
     async def register_client(self, client_id: str, client_type: str = "unknown"):
         """注册客户端"""
+        # 检查客户端是否已经存在，避免重复注册
+        if client_id in self.response_queues:
+            self.logger.debug(f"Client {client_id} already registered, skipping")
+            return
+            
         self.response_queues[client_id] = asyncio.Queue()
         self.client_stats[client_id] = {
             'total_requests': 0,
