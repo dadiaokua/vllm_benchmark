@@ -48,8 +48,9 @@ async def make_request(client, experiment, request, start_time=None):
             model=GLOBAL_CONFIG['request_model_name'],
             messages=[{"role": "user", "content": request}],
             max_tokens=experiment.output_tokens,
-            stream=True,
-            extra_headers={"X-Request-ID": request_id}  # 添加请求ID到header
+            stream=True
+            # 注意：移除 extra_headers，因为 OpenAI 客户端可能不支持
+            # 请求ID仍然会被跟踪，但不会通过header传递给服务器
         )
         first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream),
                                                                   timeout=experiment.request_timeout)
@@ -539,26 +540,20 @@ async def abort_vllm_request(client, request_id):
             logging.info(f"Successfully aborted request {request_id} using client.abort()")
             return
         
-        # 方法2: 尝试HTTP POST到abort端点
-        try:
-            response = await client.post(
-                "/abort",
-                json={"request_id": request_id}
-            )
-            if response.status_code == 200:
-                logging.info(f"Successfully aborted request {request_id} via HTTP")
-                return
-            else:
-                logging.warning(f"Failed to abort request {request_id}: HTTP {response.status_code}")
-        except AttributeError:
-            # client 不支持 .post 方法
-            pass
-        
-        # 方法3: 尝试使用OpenAI兼容的cancel方法
+        # 方法2: 尝试使用OpenAI兼容的cancel方法
         try:
             if hasattr(client.chat.completions, 'cancel'):
                 await client.chat.completions.cancel(request_id)
                 logging.info(f"Successfully cancelled request {request_id} using OpenAI API")
+                return
+        except:
+            pass
+        
+        # 方法3: 检查是否是vLLM AsyncLLMEngine
+        try:
+            if hasattr(client, 'engine') and hasattr(client.engine, 'abort'):
+                await client.engine.abort(request_id)
+                logging.info(f"Successfully aborted request {request_id} using engine.abort()")
                 return
         except:
             pass
@@ -581,7 +576,7 @@ async def abort_all_active_requests(clients):
     
     logging.info(f"Aborting {len(request_ids_to_abort)} active requests")
     
-    # 尝试中止所有活跃请求
+    # 方法1: 尝试逐个中止请求
     abort_tasks = []
     for client in clients:
         for request_id in request_ids_to_abort:
@@ -592,8 +587,39 @@ async def abort_all_active_requests(clients):
         successful_aborts = sum(1 for result in results if not isinstance(result, Exception))
         logging.info(f"Attempted to abort {len(abort_tasks)} requests, {successful_aborts} successful")
     
+    # # 方法2: 如果逐个中止失败，尝试关闭和重新创建客户端连接
+    # if successful_aborts < len(abort_tasks) * 0.5:  # 如果成功率低于50%
+    #     logging.info("Individual aborts mostly failed, trying connection reset")
+    #     await reset_client_connections(clients)
+    
     # 额外的清理：等待一小段时间让vLLM处理abort请求
     await asyncio.sleep(0.5)
+
+
+async def reset_client_connections(clients):
+    """重置客户端连接来中断请求"""
+    try:
+        for client in clients:
+            try:
+                # 尝试关闭底层连接
+                if hasattr(client, '_client') and hasattr(client._client, 'aclose'):
+                    await client._client.aclose()
+                    logging.info("Closed client connection")
+                elif hasattr(client, 'close'):
+                    await client.close()
+                    logging.info("Closed client connection via close()")
+                elif hasattr(client, '_transport') and hasattr(client._transport, 'close'):
+                    client._transport.close()
+                    logging.info("Closed client transport")
+            except Exception as e:
+                logging.warning(f"Failed to close client connection: {e}")
+        
+        # 等待连接关闭生效
+        await asyncio.sleep(1.0)
+        logging.info("Client connections reset completed")
+        
+    except Exception as e:
+        logging.error(f"Error during connection reset: {e}")
 
 
 async def restart_vllm_service(experiment):
