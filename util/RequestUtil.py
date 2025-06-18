@@ -2,6 +2,7 @@ import asyncio
 import time
 from datetime import datetime
 from typing import Any
+import uuid
 
 import numpy as np
 import logging
@@ -11,6 +12,10 @@ import threading
 
 from config.Config import GLOBAL_CONFIG
 from util.ThreadSafeUtil import ThreadSafeCounter
+
+# 全局变量来跟踪活跃的请求ID
+active_request_ids = set()
+active_request_ids_lock = threading.Lock()
 
 
 async def process_stream(stream):
@@ -29,23 +34,35 @@ async def process_stream(stream):
 async def make_request(client, experiment, request, start_time=None):
     if start_time is None:
         start_time = time.time()
-
+    
+    # 生成唯一的请求ID
+    request_id = str(uuid.uuid4())
+    
+    # 添加到活跃请求集合
+    with active_request_ids_lock:
+        active_request_ids.add(request_id)
+    
     try:
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model=GLOBAL_CONFIG['request_model_name'],
             messages=[{"role": "user", "content": request}],
             max_tokens=experiment.output_tokens,
-            stream=True
+            stream=True,
+            extra_headers={"X-Request-ID": request_id}  # 添加请求ID到header
         )
         first_token_time, output_tokens = await asyncio.wait_for(process_stream(stream),
-                                                                 timeout=experiment.request_timeout)
+                                                                  timeout=experiment.request_timeout)
         end_time = time.time()
         elapsed_time = end_time - start_time
         ttft = first_token_time - start_time if first_token_time else None
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
-
+        
+        # 从活跃请求集合中移除
+        with active_request_ids_lock:
+            active_request_ids.discard(request_id)
+        
         return output_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
@@ -54,12 +71,28 @@ async def make_request(client, experiment, request, start_time=None):
         # 记录timeout次数
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
-
+            
         experiment.logger.warning(
             f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
+        
+        # 尝试中止vLLM中的请求
+        try:
+            await abort_vllm_request(client, request_id)
+        except Exception as e:
+            experiment.logger.warning(f"Failed to abort request {request_id}: {e}")
+        
+        # 从活跃请求集合中移除
+        with active_request_ids_lock:
+            active_request_ids.discard(request_id)
+            
         return None
     except Exception as e:
         experiment.logger.error(f"Error during request: {str(e)}")
+        
+        # 从活跃请求集合中移除
+        with active_request_ids_lock:
+            active_request_ids.discard(request_id)
+            
         return None
 
 
@@ -317,6 +350,9 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         for task in tasks:
             task.cancel()
 
+    # 中止所有活跃的vLLM请求
+    await abort_all_active_requests(selected_clients)
+
     return completed, drift_time, request_count
 
 
@@ -430,6 +466,11 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
         for task in tasks:
             task.cancel()
+            
+    # 中止所有活跃的vLLM请求（通过队列管理器）
+    if hasattr(queue_manager, 'openai_client') and queue_manager.openai_client:
+        await abort_all_active_requests(queue_manager.openai_client)
+    
     return completed, drift_time, request_count
 
 
@@ -487,3 +528,94 @@ async def force_cancel_all_tasks(tasks, experiment):
 
     experiment.logger.info(
         f"Task cancellation complete - Cancelled: {cancelled_count}, Completed: {completed_count}, Exceptions: {exception_count}")
+
+
+async def abort_vllm_request(client, request_id):
+    """中止vLLM中的特定请求"""
+    try:
+        # 方法1: 尝试使用vLLM的abort API (v0.2.0+)
+        if hasattr(client, 'abort'):
+            await client.abort(request_id)
+            logging.info(f"Successfully aborted request {request_id} using client.abort()")
+            return
+        
+        # 方法2: 尝试HTTP POST到abort端点
+        try:
+            response = await client.post(
+                "/abort",
+                json={"request_id": request_id}
+            )
+            if response.status_code == 200:
+                logging.info(f"Successfully aborted request {request_id} via HTTP")
+                return
+            else:
+                logging.warning(f"Failed to abort request {request_id}: HTTP {response.status_code}")
+        except AttributeError:
+            # client 不支持 .post 方法
+            pass
+        
+        # 方法3: 尝试使用OpenAI兼容的cancel方法
+        try:
+            if hasattr(client.chat.completions, 'cancel'):
+                await client.chat.completions.cancel(request_id)
+                logging.info(f"Successfully cancelled request {request_id} using OpenAI API")
+                return
+        except:
+            pass
+            
+        logging.warning(f"No available method to abort request {request_id}")
+        
+    except Exception as e:
+        logging.warning(f"Error aborting request {request_id}: {e}")
+
+
+async def abort_all_active_requests(clients):
+    """中止所有活跃的vLLM请求"""
+    with active_request_ids_lock:
+        request_ids_to_abort = active_request_ids.copy()
+        active_request_ids.clear()
+    
+    if not request_ids_to_abort:
+        logging.info("No active requests to abort")
+        return
+    
+    logging.info(f"Aborting {len(request_ids_to_abort)} active requests")
+    
+    # 尝试中止所有活跃请求
+    abort_tasks = []
+    for client in clients:
+        for request_id in request_ids_to_abort:
+            abort_tasks.append(abort_vllm_request(client, request_id))
+    
+    if abort_tasks:
+        results = await asyncio.gather(*abort_tasks, return_exceptions=True)
+        successful_aborts = sum(1 for result in results if not isinstance(result, Exception))
+        logging.info(f"Attempted to abort {len(abort_tasks)} requests, {successful_aborts} successful")
+    
+    # 额外的清理：等待一小段时间让vLLM处理abort请求
+    await asyncio.sleep(0.5)
+
+
+async def restart_vllm_service(experiment):
+    """重启vLLM服务以确保完全清理（激进方案）"""
+    try:
+        if hasattr(experiment, 'vllm_process') and experiment.vllm_process:
+            experiment.logger.info("Restarting vLLM service to ensure clean state")
+            
+            # 终止当前进程
+            experiment.vllm_process.terminate()
+            await asyncio.sleep(2)
+            
+            # 如果还没结束，强制杀死
+            if experiment.vllm_process.poll() is None:
+                experiment.vllm_process.kill()
+                await asyncio.sleep(1)
+            
+            # 重新启动vLLM服务
+            # 这里需要根据你的vLLM启动配置来调整
+            # experiment.vllm_process = await start_vllm_service()
+            
+            experiment.logger.info("vLLM service restarted")
+            
+    except Exception as e:
+        experiment.logger.error(f"Failed to restart vLLM service: {e}")
