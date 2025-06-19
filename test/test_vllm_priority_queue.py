@@ -53,7 +53,7 @@ async def test_priority_queue_order(engine, sampling_params):
     requests = []
     
     # 先添加低优先级请求（priority=0, 默认值）
-    for i in range(3):
+    for i in range(20):
         request_id = f"low_priority_{i}_{uuid.uuid4()}"
         prompt = f"Low priority request {i}: Write a short story about cats."
         
@@ -61,7 +61,7 @@ async def test_priority_queue_order(engine, sampling_params):
         # 使用engine.generate方法，并且查看是否支持priority参数
         
         task = asyncio.create_task(
-            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=0)
+            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=10)
         )
         requests.append(("low", request_id, task))
         
@@ -78,7 +78,7 @@ async def test_priority_queue_order(engine, sampling_params):
         
         logger.info(f"添加高优先级请求: {request_id}")
         task = asyncio.create_task(
-            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=10)
+            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=0)
         )
         requests.append(("high", request_id, task))
         
