@@ -101,10 +101,10 @@ async def test_priority_queuing(engine, sampling_params, prompt_loader):
             low_priority_tasks.append((task, request_id))
 
     # 2. 等待一段时间，然后添加高优先级请求
-    await asyncio.sleep(2)
+    await asyncio.sleep(1)
     logger.info("2. 添加高优先级请求（应该插队）...")
 
-    high_priority_prompt = prompts[40] if len(prompts) > 3 else "This is a high priority urgent request"
+    high_priority_prompt = prompts[-1] if len(prompts) > 3 else "This is a high priority urgent request"
     high_priority_id = f"high_priority_{uuid.uuid4()}"
 
     try:
