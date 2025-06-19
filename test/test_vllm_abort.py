@@ -31,7 +31,7 @@ async def test_vllm_abort():
         engine_args = AsyncEngineArgs(
             model="/home/llm/model_hub/Llama-3.1-8B",
             max_num_seqs=4,
-            gpu_memory_utilization=0.3,  # 使用较少内存
+            gpu_memory_utilization=0.9,  # 使用较少内存
             tensor_parallel_size=4,
             trust_remote_code=True,
             enable_chunked_prefill=False,
