@@ -40,7 +40,7 @@ async def test_vllm_abort():
         
         # 2. 创建引擎
         logger.info("2. 创建AsyncLLMEngine...")
-        engine = AsyncLLMEngine.from_engine_args(engine_args)
+        engine = await AsyncLLMEngine.from_engine_args(engine_args)
         logger.info("✓ AsyncLLMEngine创建成功")
         
         # 3. 准备测试数据
@@ -65,9 +65,13 @@ async def test_vllm_abort():
                 
         logger.info(f"✓ 正常请求完成，耗时: {time.time() - start_time:.2f}s，输出数量: {len(results)}")
         
-        # 5. 测试abort功能
-        logger.info("4. 测试abort功能...")
-        await test_abort_methods(engine)
+        # # 5. 测试abort功能
+        # logger.info("4. 测试abort功能...")
+        # await test_abort_methods(engine)
+        
+        # 5.5. 测试实际abort功能
+        logger.info("4.5 测试实际abort调用...")
+        await test_real_abort_functionality(engine, sampling_params)
         
         # 6. 测试多并发请求和abort
         logger.info("5. 测试多并发请求和abort...")
@@ -82,6 +86,90 @@ async def test_vllm_abort():
         logger.error(f"❌ 测试过程中出现错误: {e}")
         import traceback
         traceback.print_exc()
+
+
+async def test_real_abort_functionality(engine, sampling_params):
+    """测试实际的abort功能"""
+    logger.info("4.5.1 测试engine.abort()方法...")
+    
+    # 测试1: 使用engine.abort()方法
+    if hasattr(engine, 'abort'):
+        abort_test_prompt = "Write a very detailed technical explanation of machine learning algorithms, including deep neural networks, convolutional neural networks, recurrent neural networks, and transformer architectures. Make it extremely detailed with mathematical formulations."
+        abort_request_id = f"abort_test_{uuid.uuid4()}"
+        
+        logger.info(f"启动长请求用于abort测试: {abort_request_id}")
+        
+        # 启动异步生成任务
+        generation_task = asyncio.create_task(
+            collect_generation_output(engine, abort_test_prompt, sampling_params, abort_request_id)
+        )
+        
+        # 等待请求开始处理
+        await asyncio.sleep(1)
+        
+        try:
+            logger.info("调用 engine.abort()...")
+            # 尝试不同的abort调用方式
+            if hasattr(engine, 'abort'):
+                # 方式1: 不带参数的abort
+                try:
+                    result = await engine.abort() if asyncio.iscoroutinefunction(engine.abort) else engine.abort()
+                    logger.info(f"✓ engine.abort() 成功: {result}")
+                except Exception as e:
+                    logger.warning(f"engine.abort() 失败: {e}")
+                    
+                # 方式2: 带request_id的abort（如果支持）
+                try:
+                    result = await engine.abort(abort_request_id) if asyncio.iscoroutinefunction(engine.abort) else engine.abort(abort_request_id)
+                    logger.info(f"✓ engine.abort(request_id) 成功: {result}")
+                except Exception as e:
+                    logger.warning(f"engine.abort(request_id) 失败: {e}")
+        except Exception as e:
+            logger.warning(f"engine.abort() 调用失败: {e}")
+        
+        # 等待任务完成或被取消
+        try:
+            await asyncio.wait_for(generation_task, timeout=10)
+            logger.info("生成任务完成")
+        except asyncio.TimeoutError:
+            logger.info("生成任务超时")
+            generation_task.cancel()
+        except Exception as e:
+            logger.info(f"生成任务异常: {e}")
+    
+    # 测试2: 使用engine.engine.abort_request()方法
+    logger.info("4.5.2 测试engine.engine.abort_request()方法...")
+    
+    if hasattr(engine, 'engine') and hasattr(engine.engine, 'abort_request'):
+        abort_test_prompt2 = "Explain quantum computing in extreme detail, covering quantum bits, quantum gates, quantum algorithms like Shor's algorithm and Grover's algorithm, quantum error correction, and current quantum computing hardware implementations."
+        abort_request_id2 = f"abort_test_2_{uuid.uuid4()}"
+        
+        logger.info(f"启动第二个长请求用于abort测试: {abort_request_id2}")
+        
+        # 启动异步生成任务
+        generation_task2 = asyncio.create_task(
+            collect_generation_output(engine, abort_test_prompt2, sampling_params, abort_request_id2)
+        )
+        
+        # 等待请求开始处理
+        await asyncio.sleep(1)
+        
+        try:
+            logger.info("调用 engine.engine.abort_request()...")
+            result = engine.engine.abort_request(abort_request_id2)
+            logger.info(f"✓ engine.engine.abort_request() 成功: {result}")
+        except Exception as e:
+            logger.warning(f"engine.engine.abort_request() 失败: {e}")
+        
+        # 等待任务完成或被取消
+        try:
+            await asyncio.wait_for(generation_task2, timeout=10)
+            logger.info("第二个生成任务完成")
+        except asyncio.TimeoutError:
+            logger.info("第二个生成任务超时")
+            generation_task2.cancel()
+        except Exception as e:
+            logger.info(f"第二个生成任务异常: {e}")
 
 
 async def test_abort_methods(engine):
@@ -142,22 +230,43 @@ async def test_concurrent_abort(engine, sampling_params):
     # 等待一小段时间让请求开始处理
     await asyncio.sleep(2)
     
-    logger.info("5.2 尝试取消部分请求...")
+    logger.info("5.2 尝试通过engine abort方法取消请求...")
     
-    # 尝试取消第一个任务
+    # 尝试使用engine的abort方法取消第一个请求
+    if request_ids and hasattr(engine, 'engine') and hasattr(engine.engine, 'abort_request'):
+        first_request_id = request_ids[0]
+        logger.info(f"尝试通过engine.engine.abort_request()取消请求: {first_request_id}")
+        try:
+            result = engine.engine.abort_request(first_request_id)
+            logger.info(f"✓ 通过engine.engine.abort_request()取消成功: {result}")
+        except Exception as e:
+            logger.warning(f"engine.engine.abort_request()失败: {e}")
+            
+    # 如果有engine.abort方法，也尝试使用它
+    if hasattr(engine, 'abort'):
+        logger.info("尝试调用engine.abort()...")
+        try:
+            # 尝试不带参数的abort（可能取消所有请求）
+            result = await engine.abort() if asyncio.iscoroutinefunction(engine.abort) else engine.abort()
+            logger.info(f"✓ engine.abort()调用成功: {result}")
+        except Exception as e:
+            logger.warning(f"engine.abort()失败: {e}")
+    
+    # 作为备选方案，取消asyncio任务
+    logger.info("5.3 作为备选方案，取消asyncio任务...")
     if tasks:
-        logger.info(f"取消第一个任务...")
+        logger.info(f"取消第一个asyncio任务...")
         tasks[0].cancel()
         
         try:
             await tasks[0]
         except asyncio.CancelledError:
-            logger.info("✓ 第一个任务已成功取消")
+            logger.info("✓ 第一个asyncio任务已成功取消")
         except Exception as e:
-            logger.warning(f"取消第一个任务时出现异常: {e}")
+            logger.warning(f"取消第一个asyncio任务时出现异常: {e}")
     
     # 等待其余任务完成或超时
-    logger.info("5.3 等待其余任务完成...")
+    logger.info("5.4 等待其余任务完成...")
     remaining_tasks = tasks[1:]
     
     if remaining_tasks:
@@ -179,9 +288,9 @@ async def collect_generation_output(engine, prompt: str, sampling_params, reques
         logger.info(f"开始处理请求: {request_id}")
         async for output in engine.generate(prompt, sampling_params, request_id):
             results.append(output)
-            # 每收集到一个输出就记录一下
-            if len(results) % 5 == 0:
-                logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
+            # # 每收集到一个输出就记录一下
+            # if len(results) % 5 == 0:
+            #     logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
                 
         logger.info(f"✓ 请求 {request_id} 完成，总输出: {len(results)}")
         return results
