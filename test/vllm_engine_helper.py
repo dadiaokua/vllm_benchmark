@@ -49,6 +49,7 @@ class VLLMEngineManager:
             enable_chunked_prefill=enable_chunked_prefill,
             dtype=dtype,
             scheduling_policy=scheduling_policy,
+            max_model_len=4096,
         )
 
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
