@@ -13,18 +13,29 @@ import asyncio
 import uuid
 import time
 import logging
-from typing import List
+from typing import List, Union, Any
 from vllm_engine_helper import VLLMEngineManager, create_sampling_params
+from prompt_loader import PromptLoader
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def safe_len(obj: Any) -> int:
+    """安全地计算对象长度，避免类型错误"""
+    if isinstance(obj, BaseException):
+        return -1
+    try:
+        return len(obj) if hasattr(obj, '__len__') else 0
+    except (TypeError, AttributeError):
+        return 0
+
 async def test_priority_scheduling():
     """测试优先级调度功能"""
     logger.info("=== 测试vLLM优先级调度功能 ===")
-    
+
     engine_manager = VLLMEngineManager()
-    
+    prompt_loader = PromptLoader()
+
     try:
         # 启动引擎，启用优先级调度
         logger.info("启动引擎并配置优先级调度...")
@@ -32,222 +43,284 @@ async def test_priority_scheduling():
             scheduling_policy="priority",  # 启用优先级调度
             max_num_seqs=4
         )
-        
+
         sampling_params = create_sampling_params(max_tokens=100)
-        
+
         # 测试优先级调度
-        await test_priority_queue_order(engine, sampling_params)
-        
+        await test_priority_queuing(engine, sampling_params, prompt_loader)
+
+        # 测试多层次优先级
+        logger.info("=== 测试多层次优先级 ===")
+        await test_multi_level_priority(engine, sampling_params, prompt_loader)
+
     except Exception as e:
-        logger.error(f"测试失败: {e}")
+        logger.error(f"测试过程中出现错误: {e}")
         import traceback
         traceback.print_exc()
     finally:
         await engine_manager.shutdown_engine()
 
-async def test_priority_queue_order(engine, sampling_params):
-    """测试不同优先级的请求处理顺序"""
-    logger.info("1. 测试请求优先级队列顺序...")
-    
-    # 创建不同优先级的请求
-    requests = []
-    
-    # 先添加低优先级请求（priority=0, 默认值）
-    for i in range(20):
-        request_id = f"low_priority_{i}_{uuid.uuid4()}"
-        prompt = f"Low priority request {i}: Write a short story about cats."
-        
-        logger.info(f"添加低优先级请求: {request_id}")
-        # 使用engine.generate方法，并且查看是否支持priority参数
-        
-        task = asyncio.create_task(
-            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=10)
-        )
-        requests.append(("low", request_id, task))
-        
-        # 稍微延迟以确保请求按顺序提交
-        await asyncio.sleep(0.1)
-    
-    # 稍等片刻让低优先级请求开始排队
-    await asyncio.sleep(0.5)
-    
-    # 添加高优先级请求
-    for i in range(2):
-        request_id = f"high_priority_{i}_{uuid.uuid4()}"
-        prompt = f"High priority request {i}: Quickly explain quantum physics."
-        
-        logger.info(f"添加高优先级请求: {request_id}")
-        task = asyncio.create_task(
-            collect_generation_with_priority(engine, prompt, sampling_params, request_id, priority=0)
-        )
-        requests.append(("high", request_id, task))
-        
-        await asyncio.sleep(0.1)
-    
-    # 等待所有请求完成并记录完成顺序
-    completion_order = []
-    completed_tasks = []
-    
-    while len(completed_tasks) < len(requests):
-        for priority_type, request_id, task in requests:
-            if task not in completed_tasks and task.done():
-                try:
-                    result = await task
-                    completion_order.append(f"{priority_type}_{request_id}")
-                    completed_tasks.append(task)
-                    logger.info(f"✓ 请求完成: {priority_type} - {request_id}")
-                except Exception as e:
-                    logger.warning(f"请求异常: {request_id} - {e}")
-                    completed_tasks.append(task)
-        
-        await asyncio.sleep(0.1)
-    
-    logger.info(f"请求完成顺序: {completion_order}")
-    
-    # 分析结果
-    logger.info("2. 分析优先级调度效果...")
-    high_priority_positions = []
-    low_priority_positions = []
-    
-    for i, request in enumerate(completion_order):
-        if request.startswith("high"):
-            high_priority_positions.append(i)
-        else:
-            low_priority_positions.append(i)
-    
-    logger.info(f"高优先级请求完成位置: {high_priority_positions}")
-    logger.info(f"低优先级请求完成位置: {low_priority_positions}")
-    
-    # 检查是否高优先级请求优先完成
-    if high_priority_positions and low_priority_positions:
-        avg_high_pos = sum(high_priority_positions) / len(high_priority_positions)
-        avg_low_pos = sum(low_priority_positions) / len(low_priority_positions)
-        
-        if avg_high_pos < avg_low_pos:
-            logger.info("✓ 优先级调度有效！高优先级请求平均更早完成")
-        else:
-            logger.warning("⚠️ 优先级调度效果不明显")
 
-async def collect_generation_with_priority(engine, prompt: str, sampling_params, request_id: str, priority: int = 0):
-    """收集生成输出，支持优先级"""
-    results = []
-    start_time = time.time()
-    
-    try:
-        logger.info(f"开始处理请求 (优先级={priority}): {request_id}")
-        
-        # 检查engine.generate方法是否支持priority参数
-        import inspect
-        gen_signature = inspect.signature(engine.generate)
-        supports_priority = 'priority' in gen_signature.parameters
-        
-        if supports_priority:
-            logger.info(f"引擎支持priority参数，设置优先级: {priority}")
-            async for output in engine.generate(prompt, sampling_params, request_id, priority=priority):
-                results.append(output)
-        else:
-            logger.warning("引擎不支持priority参数，使用默认优先级")
-            async for output in engine.generate(prompt, sampling_params, request_id):
-                results.append(output)
-                
-        end_time = time.time()
-        logger.info(f"✓ 请求完成: {request_id} (优先级={priority}), 耗时: {end_time-start_time:.2f}s, 输出: {len(results)}")
-        return results
-        
-    except asyncio.CancelledError:
-        logger.info(f"✓ 请求被取消: {request_id} (优先级={priority}), 已生成: {len(results)}")
-        return results
-    except Exception as e:
-        logger.error(f"❌ 请求出错: {request_id} (优先级={priority}) - {e}")
-        return results
+async def test_priority_queuing(engine, sampling_params, prompt_loader):
+    """测试请求优先级队列功能"""
+    logger.info("=== 测试请求优先级队列 ===")
 
-async def test_scheduling_policies():
-    """测试不同的调度策略"""
-    logger.info("=== 测试不同调度策略 ===")
-    
-    policies = ["fifo", "priority"]  # 可能支持的调度策略
-    
-    for policy in policies:
-        logger.info(f"测试调度策略: {policy}")
-        engine_manager = VLLMEngineManager()
-        
+    # 获取随机prompts
+    prompts = prompt_loader.get_random_prompts(50, "short")  # 获取5个短prompts
+    if not prompts:
+        # 如果没有prompts，使用默认prompts
+        prompts = [
+            "Write a short story about a cat",
+            "Explain quantum physics simply",
+            "Create a recipe for chocolate cake",
+            "Describe the process of photosynthesis",
+            "Write a poem about the ocean"
+        ]
+
+    # 1. 添加低优先级请求
+    logger.info("1. 添加低优先级请求...")
+    low_priority_tasks = []
+
+    for i, prompt in enumerate(prompts[:30]):  # 使用前3个prompts
+        request_id = f"low_priority_{i + 1}_{uuid.uuid4()}"
+
+        # 检查engine.generate是否支持priority参数
         try:
-            # 尝试设置不同的调度策略
-            engine = await engine_manager.start_engine(
-                scheduling_policy=policy,
-                max_num_seqs=2
+            task = asyncio.create_task(
+                generate_with_priority(engine, prompt, sampling_params, request_id, priority=10)  # 低优先级使用大数字
             )
-            
-            logger.info(f"✓ 成功启动引擎，调度策略: {policy}")
-            
-            # 简单测试
-            sampling_params = create_sampling_params(max_tokens=20)
-            request_id = f"test_{policy}_{uuid.uuid4()}"
-            
-            results = []
-            async for output in engine.generate("Test prompt", sampling_params, request_id):
-                results.append(output)
-                break  # 只获取第一个输出
-            
-            logger.info(f"✓ 策略 {policy} 测试成功")
-            
+            low_priority_tasks.append((task, request_id))
+            logger.info(f"添加低优先级请求 (priority=10): {request_id}")
+            await asyncio.sleep(0.5)  # 间隔添加
         except Exception as e:
-            logger.warning(f"策略 {policy} 不支持或测试失败: {e}")
-        finally:
-            await engine_manager.shutdown_engine()
+            logger.warning(f"无法设置优先级，使用普通generate: {e}")
+            task = asyncio.create_task(
+                generate_without_priority(engine, prompt, sampling_params, request_id)
+            )
+            low_priority_tasks.append((task, request_id))
 
-async def test_engine_methods_inspection():
-    """检查引擎支持的方法和参数"""
-    logger.info("=== 检查引擎方法和参数 ===")
-    
-    engine_manager = VLLMEngineManager()
-    
+    # 2. 等待一段时间，然后添加高优先级请求
+    await asyncio.sleep(2)
+    logger.info("2. 添加高优先级请求（应该插队）...")
+
+    high_priority_prompt = prompts[40] if len(prompts) > 3 else "This is a high priority urgent request"
+    high_priority_id = f"high_priority_{uuid.uuid4()}"
+
     try:
-        engine = await engine_manager.start_engine()
-        
-        # 检查generate方法的签名
-        import inspect
-        
-        logger.info("1. 检查engine.generate方法签名...")
-        gen_signature = inspect.signature(engine.generate)
-        logger.info(f"generate方法参数: {list(gen_signature.parameters.keys())}")
-        
-        # 检查add_request方法的签名（如果存在）
-        if hasattr(engine, 'add_request'):
-            logger.info("2. 检查engine.add_request方法签名...")
-            add_req_signature = inspect.signature(engine.add_request)
-            logger.info(f"add_request方法参数: {list(add_req_signature.parameters.keys())}")
-        
-        # 检查引擎配置
-        if hasattr(engine, 'engine'):
-            if hasattr(engine.engine, 'scheduler_config'):
-                scheduler_config = engine.engine.scheduler_config
-                logger.info("3. 检查调度器配置...")
-                scheduler_attrs = [attr for attr in dir(scheduler_config) if not attr.startswith('_')]
-                logger.info(f"调度器配置属性: {scheduler_attrs}")
-                
-                # 检查调度策略相关属性
-                if hasattr(scheduler_config, 'policy'):
-                    logger.info(f"当前调度策略: {scheduler_config.policy}")
-                if hasattr(scheduler_config, 'scheduling_policy'):
-                    logger.info(f"调度策略: {scheduler_config.scheduling_policy}")
-    
+        high_priority_task = asyncio.create_task(
+            generate_with_priority(engine, high_priority_prompt, sampling_params, high_priority_id, priority=1)
+            # 高优先级使用小数字
+        )
+        logger.info(f"添加高优先级请求 (priority=1): {high_priority_id}")
     except Exception as e:
-        logger.error(f"检查失败: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        await engine_manager.shutdown_engine()
+        logger.warning(f"无法设置高优先级，使用普通generate: {e}")
+        high_priority_task = asyncio.create_task(
+            generate_without_priority(engine, high_priority_prompt, sampling_params, high_priority_id)
+        )
+
+    # 3. 等待所有任务完成
+    logger.info("3. 等待所有请求完成...")
+
+    try:
+        # 等待所有任务完成
+        all_tasks = [task for task, _ in low_priority_tasks] + [high_priority_task]
+        await asyncio.gather(*all_tasks, return_exceptions=True)
+
+        logger.info("✓ 优先级队列测试完成")
+
+    except Exception as e:
+        logger.error(f"优先级队列测试失败: {e}")
+
+
+async def test_multi_level_priority(engine, sampling_params, prompt_loader):
+    """测试多层次优先级功能"""
+    logger.info("=== 测试多层次优先级 ===")
+
+    # 获取多个随机prompts
+    prompts = prompt_loader.get_random_prompts(60, "short")
+    if not prompts:
+        prompts = [
+            f"Priority test prompt {i}: Explain topic {i}" for i in range(6)
+        ]
+
+    # 定义不同优先级层次 (数字越小优先级越高)
+    priority_configs = [
+        (1, "最高优先级"),  # 1 = 最高优先级
+        (3, "高优先级"),  # 3 = 高优先级
+        (5, "中等优先级"),  # 5 = 中等优先级
+        (7, "低优先级"),  # 7 = 低优先级
+        (10, "最低优先级"),  # 10 = 最低优先级
+    ]
+
+    tasks = []
+    request_info = []
+
+    # 按照相反顺序添加请求（先添加低优先级，后添加高优先级）
+    logger.info("1. 按相反顺序添加不同优先级的请求...")
+
+    # 先添加低优先级请求
+    for i, (priority, desc) in enumerate(reversed(priority_configs)):
+        if i >= len(priority_configs):
+            break
+        
+        # 每个优先级层次添加10个请求
+        for j in range(10):
+            prompt_index = i * 10 + j
+            if prompt_index >= len(prompts):
+                break
+                
+            prompt = prompts[prompt_index]
+            request_id = f"priority_{priority}_{j}_{uuid.uuid4()}"
+            
+            try:
+                task = asyncio.create_task(
+                    generate_with_priority_and_timing(engine, prompt, sampling_params, request_id, priority)
+                )
+                tasks.append(task)
+                request_info.append((request_id, priority, desc))
+                
+                logger.info(f"添加请求 {desc} (priority={priority}): {request_id}")
+                await asyncio.sleep(0.1)  # 缩短间隔
+                
+            except Exception as e:
+                logger.warning(f"无法设置优先级 {priority}: {e}")
+
+    # 2. 等待一段时间，然后添加紧急请求
+    await asyncio.sleep(1)
+
+    if len(prompts) > len(priority_configs):
+        urgent_prompt = prompts[-1]
+        urgent_id = f"urgent_0_{uuid.uuid4()}"
+
+        try:
+            urgent_task = asyncio.create_task(
+                generate_with_priority_and_timing(engine, urgent_prompt, sampling_params, urgent_id, 0)  # 0 = 超高优先级
+            )
+            tasks.append(urgent_task)
+            request_info.append((urgent_id, 0, "紧急请求"))
+
+            logger.info(f"添加紧急请求 (priority=0): {urgent_id}")
+
+        except Exception as e:
+            logger.warning(f"无法设置紧急优先级: {e}")
+
+    # 3. 等待所有任务完成并分析执行顺序
+    logger.info("2. 等待所有请求完成并分析执行顺序...")
+
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 分析结果
+        logger.info("3. 分析优先级执行效果...")
+        
+        completed_order = []
+        for i, (result, (request_id, priority, desc)) in enumerate(zip(results, request_info)):
+            if isinstance(result, Exception):
+                logger.warning(f"请求 {desc} 异常: {result}")
+                completed_order.append((desc, priority, -1))  # 用-1表示异常
+            else:
+                # 使用安全的长度计算函数
+                output_count = safe_len(result)
+                completed_order.append((desc, priority, output_count))
+
+        logger.info("完成顺序分析:")
+        for i, (desc, priority, output_count) in enumerate(completed_order, 1):
+            if output_count == -1:
+                logger.info(f"  {i}. {desc} (priority={priority}) - 异常")
+            else:
+                logger.info(f"  {i}. {desc} (priority={priority}) - 输出: {output_count}")
+        
+        # 检查优先级是否按预期工作
+        valid_priorities = [priority for _, priority, output_count in completed_order if output_count != -1]
+        if valid_priorities and valid_priorities == sorted(valid_priorities):  # 数字越小优先级越高，应该按升序完成
+            logger.info("✓ 优先级调度工作正常！请求按优先级顺序完成")
+        else:
+            logger.warning("⚠️ 优先级调度效果不明显，可能引擎不支持或配置问题")
+            logger.info(f"实际优先级顺序: {valid_priorities}")
+            logger.info(f"期望优先级顺序: {sorted(valid_priorities)}")
+
+    except Exception as e:
+        logger.error(f"多层次优先级测试失败: {e}")
+
+
+async def generate_with_priority(engine, prompt, sampling_params, request_id, priority=0) -> List[Any]:
+    """尝试使用优先级生成（如果支持的话）"""
+    results: List[Any] = []
+    start_time = time.time()
+
+    logger.info(f"开始处理请求: {request_id} (优先级: {priority})")
+
+    try:
+        # 尝试使用priority参数
+        async for output in engine.generate(prompt, sampling_params, request_id, priority=priority):
+            results.append(output)
+            if len(results) % 20 == 0:
+                logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
+
+        elapsed = time.time() - start_time
+        logger.info(f"✓ 请求 {request_id} 完成，耗时: {elapsed:.2f}s，输出: {len(results)}")
+        return results
+
+    except TypeError as e:
+        # 如果不支持priority参数，回退到普通generate
+        logger.warning(f"engine.generate不支持priority参数: {e}")
+        return await generate_without_priority(engine, prompt, sampling_params, request_id)
+
+
+async def generate_without_priority(engine, prompt, sampling_params, request_id) -> List[Any]:
+    """不使用优先级的普通生成"""
+    results: List[Any] = []
+    start_time = time.time()
+
+    logger.info(f"开始处理请求: {request_id} (普通模式)")
+
+    try:
+        async for output in engine.generate(prompt, sampling_params, request_id):
+            results.append(output)
+            if len(results) % 20 == 0:
+                logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
+
+        elapsed = time.time() - start_time
+        logger.info(f"✓ 请求 {request_id} 完成，耗时: {elapsed:.2f}s，输出: {len(results)}")
+        return results
+
+    except Exception as e:
+        logger.error(f"❌ 请求 {request_id} 失败: {e}")
+        return results
+
+
+async def generate_with_priority_and_timing(engine, prompt, sampling_params, request_id, priority) -> List[Any]:
+    """带时间记录的优先级生成"""
+    import time
+
+    results: List[Any] = []
+    start_time = time.time()
+
+    logger.info(f"[{time.strftime('%H:%M:%S')}] 开始处理请求: {request_id} (priority={priority})")
+
+    try:
+        async for output in engine.generate(prompt, sampling_params, request_id, priority=priority):
+            results.append(output)
+            if len(results) % 3 == 0:  # 更频繁的日志
+                logger.info(f"[{time.strftime('%H:%M:%S')}] 请求 {request_id} 已生成 {len(results)} 个输出")
+
+        elapsed = time.time() - start_time
+        logger.info(
+            f"[{time.strftime('%H:%M:%S')}] ✓ 请求 {request_id} (priority={priority}) 完成，耗时: {elapsed:.2f}s，输出: {len(results)}")
+        return results
+
+    except TypeError as e:
+        logger.warning(f"engine.generate不支持priority参数: {e}")
+        return await generate_without_priority(engine, prompt, sampling_params, request_id)
+    except Exception as e:
+        logger.error(f"❌ 请求 {request_id} 失败: {e}")
+        return results
+
+
+async def main():
+    """主函数"""
+    await test_priority_scheduling()
+
 
 if __name__ == "__main__":
-    async def main():
-        # 检查引擎方法和参数
-        # await test_engine_methods_inspection()
-        
-        # 测试不同调度策略
-        # await test_scheduling_policies()
-        
-        # 测试优先级调度
-        await test_priority_scheduling()
-    
-    asyncio.run(main()) 
+    asyncio.run(main())
