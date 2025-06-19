@@ -40,7 +40,7 @@ async def test_vllm_abort():
         
         # 2. 创建引擎
         logger.info("2. 创建AsyncLLMEngine...")
-        engine = await AsyncLLMEngine.from_engine_args(engine_args)
+        engine = AsyncLLMEngine.from_engine_args(engine_args)
         logger.info("✓ AsyncLLMEngine创建成功")
         
         # 3. 准备测试数据
