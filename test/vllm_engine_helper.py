@@ -49,6 +49,9 @@ class VLLMEngineManager:
             dtype=dtype,
             scheduling_policy=scheduling_policy,
             max_model_len=4096,
+            enable_prefix_caching=False,
+            swap_space=0,
+            disable_log_stats=True,
         )
 
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
