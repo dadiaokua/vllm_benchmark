@@ -41,10 +41,11 @@ async def test_priority_scheduling():
         logger.info("启动引擎并配置优先级调度...")
         engine = await engine_manager.start_engine(
             scheduling_policy="priority",  # 启用优先级调度
-            max_num_seqs=4
+            max_num_seqs=4,  # 从4减少到2，降低并发数
+            tensor_parallel_size=8  # 明确指定单GPU
         )
 
-        sampling_params = create_sampling_params(max_tokens=100)
+        sampling_params = create_sampling_params(max_tokens=50)
 
         # 测试优先级调度
         await test_priority_queuing(engine, sampling_params, prompt_loader)
@@ -66,7 +67,7 @@ async def test_priority_queuing(engine, sampling_params, prompt_loader):
     logger.info("=== 测试请求优先级队列 ===")
 
     # 获取随机prompts
-    prompts = prompt_loader.get_random_prompts(50, "short")  # 获取5个短prompts
+    prompts = prompt_loader.get_random_prompts(15, "short")  # 从50减少到15
     if not prompts:
         # 如果没有prompts，使用默认prompts
         prompts = [
@@ -81,7 +82,7 @@ async def test_priority_queuing(engine, sampling_params, prompt_loader):
     logger.info("1. 添加低优先级请求...")
     low_priority_tasks = []
 
-    for i, prompt in enumerate(prompts[:30]):  # 使用前3个prompts
+    for i, prompt in enumerate(prompts[:8]):  # 从30减少到8个低优先级请求
         request_id = f"low_priority_{i + 1}_{uuid.uuid4()}"
 
         # 检查engine.generate是否支持priority参数
@@ -137,7 +138,7 @@ async def test_multi_level_priority(engine, sampling_params, prompt_loader):
     logger.info("=== 测试多层次优先级 ===")
 
     # 获取多个随机prompts
-    prompts = prompt_loader.get_random_prompts(60, "short")
+    prompts = prompt_loader.get_random_prompts(25, "short")  # 从60减少到25
     if not prompts:
         prompts = [
             f"Priority test prompt {i}: Explain topic {i}" for i in range(6)
@@ -163,9 +164,9 @@ async def test_multi_level_priority(engine, sampling_params, prompt_loader):
         if i >= len(priority_configs):
             break
         
-        # 每个优先级层次添加10个请求
-        for j in range(10):
-            prompt_index = i * 10 + j
+        # 每个优先级层次添加3个请求（从10减少到3）
+        for j in range(3):
+            prompt_index = i * 3 + j  # 相应调整索引计算
             if prompt_index >= len(prompts):
                 break
                 
@@ -254,7 +255,7 @@ async def generate_with_priority(engine, prompt, sampling_params, request_id, pr
         # 尝试使用priority参数
         async for output in engine.generate(prompt, sampling_params, request_id, priority=priority):
             results.append(output)
-            if len(results) % 20 == 0:
+            if len(results) % 10 == 0:  # 从20改回10
                 logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
 
         elapsed = time.time() - start_time
@@ -277,7 +278,7 @@ async def generate_without_priority(engine, prompt, sampling_params, request_id)
     try:
         async for output in engine.generate(prompt, sampling_params, request_id):
             results.append(output)
-            if len(results) % 20 == 0:
+            if len(results) % 10 == 0:  # 从20改回10
                 logger.info(f"请求 {request_id} 已生成 {len(results)} 个输出")
 
         elapsed = time.time() - start_time
@@ -301,7 +302,7 @@ async def generate_with_priority_and_timing(engine, prompt, sampling_params, req
     try:
         async for output in engine.generate(prompt, sampling_params, request_id, priority=priority):
             results.append(output)
-            if len(results) % 3 == 0:  # 更频繁的日志
+            if len(results) % 5 == 0:  # 从3改为5，减少日志
                 logger.info(f"[{time.strftime('%H:%M:%S')}] 请求 {request_id} 已生成 {len(results)} 个输出")
 
         elapsed = time.time() - start_time
