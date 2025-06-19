@@ -73,7 +73,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         first_token_time = None
         
         # 使用AsyncLLMEngine生成
-        async for request_output in engine.generate(request, sampling_params, request_id):
+        async for request_output in engine.generate(request, sampling_params, request_id, priority=experiment.priority):
             if first_token_time is None and len(request_output.outputs) > 0 and len(request_output.outputs[0].token_ids) > 0:
                 first_token_time = time.time()
             results.append(request_output)

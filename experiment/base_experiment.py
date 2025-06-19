@@ -28,6 +28,7 @@ class BaseExperiment:
         self.client = client
         self.config = client.experiment_config
         self.logger = client.logger
+        self.priority = client.priority
 
         # 从客户端获取必要的属性
         self.client_id = client.client_id
