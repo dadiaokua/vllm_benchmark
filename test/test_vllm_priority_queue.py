@@ -242,10 +242,10 @@ async def test_engine_methods_inspection():
 if __name__ == "__main__":
     async def main():
         # 检查引擎方法和参数
-        await test_engine_methods_inspection()
+        # await test_engine_methods_inspection()
         
         # 测试不同调度策略
-        #await test_scheduling_policies()
+        # await test_scheduling_policies()
         
         # 测试优先级调度
         await test_priority_scheduling()
