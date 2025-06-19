@@ -14,6 +14,9 @@ os.environ.setdefault("NCCL_SOCKET_IFNAME", "lo")
 os.environ.setdefault("GLOO_SOCKET_IFNAME", "lo")
 os.environ.setdefault("NCCL_DEBUG", "WARN")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
+# 禁用Ray的一些警告和自动启动
+os.environ.setdefault("RAY_DISABLE_IMPORT_WARNING", "1")
+os.environ.setdefault("RAY_LOG_TO_STDERR", "0")
 
 logger = logging.getLogger(__name__)
 
