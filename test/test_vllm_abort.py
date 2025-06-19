@@ -33,7 +33,8 @@ async def test_vllm_abort():
             max_num_seqs=4,
             gpu_memory_utilization=0.3,  # 使用较少内存
             tensor_parallel_size=1,
-            trust_remote_code=True
+            trust_remote_code=True,
+            enable_chunked_prefill=False
         )
         
         # 2. 创建引擎
