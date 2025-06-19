@@ -39,7 +39,7 @@ class VLLMEngineManager:
             scheduling_policy=scheduling_policy,
         )
         
-        self.engine = await AsyncLLMEngine.from_engine_args(engine_args)
+        self.engine = AsyncLLMEngine.from_engine_args(engine_args)
         logger.info("✓ vLLM引擎启动成功")
         return self.engine
     
