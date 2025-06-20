@@ -6,8 +6,10 @@ vLLM基准测试主程序
 
 import asyncio
 import time
+import traceback
 
 from config.Config import GLOBAL_CONFIG
+from plot.plotMain import plot_result
 
 # 导入分离的模块
 from logger_utils import setup_logger
@@ -94,7 +96,7 @@ async def main():
 
         # 11. 生成结果图表
         try:
-            from util.plot import plot_result
+
             plot_result(plot_data)
         except ImportError:
             logger.warning("Could not import plot_result, skipping result plotting")
@@ -103,7 +105,6 @@ async def main():
 
     except Exception as e:
         logger.error(f"Benchmark execution failed: {e}")
-        import traceback
         traceback.print_exc()
     finally:
         # 确保在程序结束时停止vLLM引擎
