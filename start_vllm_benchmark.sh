@@ -1,9 +1,21 @@
 #!/bin/bash
 
 # =============================================================================
-# vLLM Benchmark 启动脚本 (简化版本)
-# 只包含基准测试参数，不包含vLLM引擎参数
+# vLLM Benchmark 启动脚本
+# 包含vLLM引擎参数配置和基准测试参数
 # =============================================================================
+
+# ========== vLLM引擎参数 ==========
+MODEL_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
+TENSOR_PARALLEL_SIZE=8
+GPU_MEMORY_UTILIZATION=0.9
+MAX_MODEL_LEN=8124
+TRUST_REMOTE_CODE="true"
+DISABLE_LOG_STATS="true"
+ENABLE_PREFIX_CACHING="false"
+SWAP_SPACE=0
+DTYPE="auto"
+QUANTIZATION="None"
 
 # ========== 基础连接参数 ==========
 VLLM_URL="http://222.201.144.119:8000/v1"
@@ -45,6 +57,19 @@ REQUEST_MODEL_NAME="Qwen2.5-32B"
 echo "=========================================="
 echo "         vLLM Benchmark 配置信息"
 echo "=========================================="
+echo ""
+echo "🚀 vLLM引擎参数:"
+echo "  Model Path: $MODEL_PATH"
+echo "  Tensor Parallel Size: $TENSOR_PARALLEL_SIZE"
+echo "  GPU Memory Utilization: $GPU_MEMORY_UTILIZATION"
+echo "  Max Num Seqs: $MAX_NUM_SEQS"
+echo "  Max Model Len: $MAX_MODEL_LEN"
+echo "  Trust Remote Code: $TRUST_REMOTE_CODE"
+echo "  Disable Log Stats: $DISABLE_LOG_STATS"
+echo "  Enable Prefix Caching: $ENABLE_PREFIX_CACHING"
+echo "  Swap Space: $SWAP_SPACE"
+echo "  Data Type: $DTYPE"
+echo "  Quantization: $QUANTIZATION"
 echo ""
 echo "🔗 基础连接参数:"
 echo "  vLLM URL: $VLLM_URL"

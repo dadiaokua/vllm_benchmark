@@ -15,8 +15,7 @@ logger = logging.getLogger(__name__)
 def process_and_save_results(tasks, start_time, args, logger):
     """处理和保存基准测试结果"""
     # 这里需要导入相关的函数，根据你的实际代码结构调整
-    from util.results import save_benchmark_results
-    from util.plot import plot_result
+    from util.FileSaveUtil import save_benchmark_results
     
     all_benchmark_results = []
     for task in tasks[1:]:
@@ -47,12 +46,3 @@ def process_and_save_results(tasks, start_time, args, logger):
     plot_data.update(args_dict)
     save_benchmark_results(filename, benchmark_results, plot_data, logger)
     return benchmark_results, total_time, filename, plot_data
-
-
-def prepare_results_file():
-    """准备结果文件"""
-    # 这里需要导入RESULTS_FILE，根据你的实际代码结构调整
-    from config import RESULTS_FILE
-    
-    with open(RESULTS_FILE, "w") as f:
-        json.dump([], f) 

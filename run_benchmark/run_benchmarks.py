@@ -46,17 +46,13 @@ async def main():
         GLOBAL_CONFIG['vllm_engine'] = vllm_engine
 
     # 4. 设置全局配置
-    try:
-        GLOBAL_CONFIG['round_time'] = args.round_time
-        if GLOBAL_CONFIG.get('exp_time', 36000) < args.round_time * args.round:
-            GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 3
-    except ImportError:
-        logger.warning("Could not import GLOBAL_CONFIG, using default settings")
+    GLOBAL_CONFIG['round_time'] = args.round_time
+    if GLOBAL_CONFIG.get('exp_time', 36000) < args.round_time * args.round:
+        GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 3
 
     # 5. 设置服务器和连接
     servers = setup_servers_if_needed(args)
     setup_request_model_name(args)
-    prepare_results_file()
 
     # 6. 创建结果队列
     all_results = asyncio.Queue()
@@ -96,7 +92,6 @@ async def main():
 
         # 11. 生成结果图表
         try:
-
             plot_result(plot_data)
         except ImportError:
             logger.warning("Could not import plot_result, skipping result plotting")
