@@ -91,7 +91,7 @@ def parse_args(logger):
                         default="Meta-Llama-3.1-8B-Instruct-AWQ-INT4", required=True)
     
     # vLLM引擎参数
-    parser.add_argument("--start_engine", type=bool, help="Whether to start the vLLM engine", default=True)
+    parser.add_argument("--start_engine", type=bool, help="Whether to start the vLLM engine", default=False, required=True)
     parser.add_argument("--model_path", type=str, help="Path to the vLLM model",
                         default="/home/llm/model_hub/Qwen2.5-32B-Instruct")
     parser.add_argument("--tensor_parallel_size", type=int, help="Tensor parallel size", default=8)

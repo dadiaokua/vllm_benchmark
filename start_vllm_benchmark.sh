@@ -38,8 +38,8 @@ EXP_NAME="LFS"
 USE_TIME_DATA=0
 
 # ========== 模型和tokenizer参数 ==========
-TOKENIZER_PATH="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
-REQUEST_MODEL_NAME="Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
+TOKENIZER_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
+REQUEST_MODEL_NAME="Qwen2.5-32"
 
 # ========== vLLM引擎参数 ==========
 START_ENGINE=true
@@ -150,7 +150,7 @@ python3 run_benchmarks.py \
     --use_time_data "$USE_TIME_DATA" \
     --tokenizer "$TOKENIZER_PATH" \
     --request_model_name "$REQUEST_MODEL_NAME" \
-
+    --start_engine "$START_ENGINE" \
 
 echo ""
 echo "=========================================="
