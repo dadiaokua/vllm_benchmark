@@ -12,9 +12,6 @@ import os
 from transformers import AutoTokenizer
 from argument_parser import safe_float_conversion
 
-# 添加项目根目录到Python路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 logger = logging.getLogger(__name__)
 
 

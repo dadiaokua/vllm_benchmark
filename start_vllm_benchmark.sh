@@ -38,8 +38,8 @@ EXP_NAME="LFS"
 USE_TIME_DATA=0
 
 # ========== 模型和tokenizer参数 ==========
-TOKENIZER_PATH="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
-REQUEST_MODEL_NAME="Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
+TOKENIZER_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
+REQUEST_MODEL_NAME="Qwen2.5-32B"
 
 # ========== 显示配置信息 ==========
 echo "=========================================="
@@ -82,6 +82,24 @@ echo "🤖 模型和tokenizer参数:"
 echo "  Tokenizer Path: $TOKENIZER_PATH"
 echo "  Request Model Name: $REQUEST_MODEL_NAME"
 echo ""
+echo "🚀 vLLM引擎参数:"
+echo "  Start Engine: $START_ENGINE"
+echo "  Model Path: $MODEL_PATH"
+echo "  Tensor Parallel Size: $TENSOR_PARALLEL_SIZE"
+echo "  Pipeline Parallel Size: $PIPELINE_PARALLEL_SIZE"
+echo "  GPU Memory Utilization: $GPU_MEMORY_UTILIZATION"
+echo "  Max Model Length: $MAX_MODEL_LEN"
+echo "  Max Num Sequences: $MAX_NUM_SEQS"
+echo "  Max Num Batched Tokens: $MAX_NUM_BATCHED_TOKENS"
+echo "  Swap Space: ${SWAP_SPACE}GB"
+echo "  Device: $DEVICE"
+echo "  Data Type: $DTYPE"
+echo "  Quantization: $QUANTIZATION"
+echo "  Trust Remote Code: $TRUST_REMOTE_CODE"
+echo "  Enable Chunked Prefill: $ENABLE_CHUNKED_PREFILL"
+echo "  Disable Log Stats: $DISABLE_LOG_STATS"
+echo "  Scheduling Policy: $SCHEDULING_POLICY"
+echo ""
 echo "=========================================="
 echo "正在启动基准测试..."
 echo "=========================================="
@@ -113,9 +131,10 @@ python3 run_benchmarks.py \
     --exp "$EXP_NAME" \
     --use_time_data "$USE_TIME_DATA" \
     --tokenizer "$TOKENIZER_PATH" \
-    --request_model_name "$REQUEST_MODEL_NAME"
+    --request_model_name "$REQUEST_MODEL_NAME" \
+    --start_engine "$START_ENGINE" \
 
 echo ""
 echo "=========================================="
-echo "基准测试完成！"
+echo "基准测试启动完成！"
 echo "=========================================="
