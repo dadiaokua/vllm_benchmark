@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # =============================================================================
-# vLLM Benchmark 启动脚本 (重构版本)
-# 支持所有新增的vLLM引擎参数和原有的基准测试参数
+# vLLM Benchmark 启动脚本 (简化版本)
+# 只包含基准测试参数，不包含vLLM引擎参数
 # =============================================================================
 
 # ========== 基础连接参数 ==========
@@ -38,26 +38,8 @@ EXP_NAME="LFS"
 USE_TIME_DATA=0
 
 # ========== 模型和tokenizer参数 ==========
-TOKENIZER_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
-REQUEST_MODEL_NAME="Qwen2.5-32"
-
-# ========== vLLM引擎参数 ==========
-START_ENGINE=true
-MODEL_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
-TENSOR_PARALLEL_SIZE=8
-PIPELINE_PARALLEL_SIZE=1
-GPU_MEMORY_UTILIZATION=0.9
-MAX_MODEL_LEN=8124
-MAX_NUM_SEQS=256
-MAX_NUM_BATCHED_TOKENS=65536
-SWAP_SPACE=4
-DEVICE="cuda"
-DTYPE="float16"
-QUANTIZATION="None"
-TRUST_REMOTE_CODE=true
-ENABLE_CHUNKED_PREFILL=false
-DISABLE_LOG_STATS=false
-SCHEDULING_POLICY="priority"
+TOKENIZER_PATH="/Users/myrick/modelHub/hub/Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
+REQUEST_MODEL_NAME="Meta-Llama-3.1-8B-Instruct-AWQ-INT4"
 
 # ========== 显示配置信息 ==========
 echo "=========================================="
@@ -100,24 +82,6 @@ echo "🤖 模型和tokenizer参数:"
 echo "  Tokenizer Path: $TOKENIZER_PATH"
 echo "  Request Model Name: $REQUEST_MODEL_NAME"
 echo ""
-echo "🚀 vLLM引擎参数:"
-echo "  Start Engine: $START_ENGINE"
-echo "  Model Path: $MODEL_PATH"
-echo "  Tensor Parallel Size: $TENSOR_PARALLEL_SIZE"
-echo "  Pipeline Parallel Size: $PIPELINE_PARALLEL_SIZE"
-echo "  GPU Memory Utilization: $GPU_MEMORY_UTILIZATION"
-echo "  Max Model Length: $MAX_MODEL_LEN"
-echo "  Max Num Sequences: $MAX_NUM_SEQS"
-echo "  Max Num Batched Tokens: $MAX_NUM_BATCHED_TOKENS"
-echo "  Swap Space: ${SWAP_SPACE}GB"
-echo "  Device: $DEVICE"
-echo "  Data Type: $DTYPE"
-echo "  Quantization: $QUANTIZATION"
-echo "  Trust Remote Code: $TRUST_REMOTE_CODE"
-echo "  Enable Chunked Prefill: $ENABLE_CHUNKED_PREFILL"
-echo "  Disable Log Stats: $DISABLE_LOG_STATS"
-echo "  Scheduling Policy: $SCHEDULING_POLICY"
-echo ""
 echo "=========================================="
 echo "正在启动基准测试..."
 echo "=========================================="
@@ -149,10 +113,9 @@ python3 run_benchmarks.py \
     --exp "$EXP_NAME" \
     --use_time_data "$USE_TIME_DATA" \
     --tokenizer "$TOKENIZER_PATH" \
-    --request_model_name "$REQUEST_MODEL_NAME" \
-    --start_engine "$START_ENGINE" \
+    --request_model_name "$REQUEST_MODEL_NAME"
 
 echo ""
 echo "=========================================="
-echo "基准测试启动完成！"
+echo "基准测试完成！"
 echo "=========================================="

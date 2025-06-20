@@ -7,6 +7,8 @@ vLLM基准测试主程序
 import asyncio
 import time
 
+from config.Config import GLOBAL_CONFIG
+
 # 导入分离的模块
 from logger_utils import setup_logger
 from argument_parser import parse_args, print_benchmark_config, validate_args
@@ -39,12 +41,10 @@ async def main():
             return
         
         # 添加vLLM引擎到全局配置，以便其他模块可以访问
-        from config import GLOBAL_CONFIG
         GLOBAL_CONFIG['vllm_engine'] = vllm_engine
 
     # 4. 设置全局配置
     try:
-        from config import GLOBAL_CONFIG
         GLOBAL_CONFIG['round_time'] = args.round_time
         if GLOBAL_CONFIG.get('exp_time', 36000) < args.round_time * args.round:
             GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 3

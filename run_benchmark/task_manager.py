@@ -7,8 +7,13 @@
 import asyncio
 import json
 import logging
+import sys
+import os
 from transformers import AutoTokenizer
 from argument_parser import safe_float_conversion
+
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 logger = logging.getLogger(__name__)
 
@@ -16,10 +21,17 @@ logger = logging.getLogger(__name__)
 async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     """Setup and create benchmark tasks"""
     # 这里需要导入相关的类和函数，根据你的实际代码结构调整
-    from benchmark.client import BenchmarkClient
-    from util.queue_manager import RequestQueueManager, QueueStrategy
-    from util.clients import initialize_clients
-    from util.monitor import ExperimentMonitor
+    from BenchmarkClient.BenchmarkClient import BenchmarkClient
+    from util.BaseUtil import initialize_clients
+    from BenchmarkMonitor.BenchmarkMonitor import ExperimentMonitor
+    
+    # 尝试导入队列管理器，如果不存在则跳过
+    try:
+        from RequestQueueManager.RequestQueueManager import RequestQueueManager, QueueStrategy
+        queue_manager_available = True
+    except ImportError:
+        logger.warning("RequestQueueManager not available, queue experiments will be skipped")
+        queue_manager_available = False
     
     tasks = []
     clients = []
@@ -37,7 +49,7 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
 
     # 创建共享的队列管理器（如果使用队列实验）
     queue_manager = None
-    if args.exp.startswith("QUEUE_"):
+    if args.exp.startswith("QUEUE_") and queue_manager_available:
         # 根据实验类型选择队列策略
         strategy_map = {
             "QUEUE_FIFO": QueueStrategy.FIFO,
@@ -139,9 +151,13 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
 async def run_benchmark_tasks(tasks, logger):
     """运行基准测试任务"""
     # 这里需要导入GLOBAL_CONFIG，根据你的实际代码结构调整
-    from config import GLOBAL_CONFIG
+    try:
+        from config.Config import GLOBAL_CONFIG
+        benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 36000)
+    except ImportError:
+        logger.warning("Could not import GLOBAL_CONFIG, using default timeout")
+        benchmark_timeout = 36000
     
-    benchmark_timeout = GLOBAL_CONFIG.get('exp_time', 36000)
     try:
         await asyncio.wait_for(asyncio.gather(*tasks[1:]), timeout=benchmark_timeout)
     except asyncio.TimeoutError:
