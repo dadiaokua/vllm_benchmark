@@ -9,14 +9,14 @@ import time
 import logging
 from datetime import datetime
 
+# 导入工具模块
+from util.FileSaveUtil import save_benchmark_results
+
 logger = logging.getLogger(__name__)
 
 
 def process_and_save_results(tasks, start_time, args, logger):
     """处理和保存基准测试结果"""
-    # 这里需要导入相关的函数，根据你的实际代码结构调整
-    from util.FileSaveUtil import save_benchmark_results
-    
     all_benchmark_results = []
     for task in tasks[1:]:
         if task.done() and not task.cancelled():

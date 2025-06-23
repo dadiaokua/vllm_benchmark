@@ -1,134 +1,155 @@
 #!/usr/bin/env python3
 """
-vLLM引擎管理模块
+引擎管理模块
 处理vLLM引擎的启动、停止和配置
 """
 
+import asyncio
 import logging
-from typing import Optional
+import os
+import subprocess
+import time
+import signal
+import psutil
+
+# 导入vLLM相关模块
+try:
+    from vllm import AsyncLLMEngine
+    from vllm.engine.arg_utils import AsyncEngineArgs
+    from vllm.engine.async_llm_engine import AsyncEngineDeadError
+    vllm_available = True
+except ImportError:
+    vllm_available = False
 
 logger = logging.getLogger(__name__)
 
+# 全局变量存储引擎进程
+vllm_process = None
 
-async def start_vllm_engine(args, logger) -> Optional[object]:
-    """
-    启动vLLM引擎
-    
-    Args:
-        args: 解析后的命令行参数
-        logger: 日志记录器
-        
-    Returns:
-        engine: AsyncLLMEngine对象，如果启动失败则返回None
-    """
+
+def get_gpu_count():
+    """获取可用的GPU数量"""
     try:
-        from vllm import AsyncLLMEngine, AsyncEngineArgs
+        result = subprocess.run(['nvidia-smi', '--query-gpu=count', '--format=csv,noheader,nounits'], 
+                              capture_output=True, text=True, check=True)
+        return int(result.stdout.strip())
+    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+        logger.warning("无法获取GPU数量，假设使用CPU")
+        return 0
 
-        # 只从args中读取vLLM启动参数，如果没有则使用默认值
-        model_path = getattr(args, 'model_path', "/home/llm/model_hub/Qwen2.5-32B-Instruct")
-        if not model_path:
-            logger.error("Model path is required. Please specify --model_path")
-            return None
 
-        tensor_parallel_size = getattr(args, 'tensor_parallel_size', 8)
-        pipeline_parallel_size = getattr(args, 'pipeline_parallel_size', 1)
-        gpu_memory_utilization = getattr(args, 'gpu_memory_utilization', 0.9)
-        max_model_len = getattr(args, 'max_model_len', 8124)
-        max_num_seqs = getattr(args, 'max_num_seqs', 256)
-        max_num_batched_tokens = getattr(args, 'max_num_batched_tokens', 65536)
-        swap_space = getattr(args, 'swap_space', 4)
-        device = getattr(args, 'device', "cuda")
-        dtype = getattr(args, 'dtype', "float16")
-        quantization = getattr(args, 'quantization', "None")
-        trust_remote_code = getattr(args, 'trust_remote_code', True)
-        enable_chunked_prefill = getattr(args, 'enable_chunked_prefill', False)
-        disable_log_stats = getattr(args, 'disable_log_stats', False)
-        scheduling_policy = getattr(args, 'scheduling_policy', "priority")
+def adjust_engine_config_for_resources(args):
+    """根据可用资源调整引擎配置"""
+    gpu_count = get_gpu_count()
+    
+    if gpu_count == 0:
+        logger.warning("未检测到GPU，将使用CPU模式（性能会显著降低）")
+        args.tensor_parallel_size = 1
+        args.gpu_memory_utilization = 0.5
+    elif gpu_count < args.tensor_parallel_size:
+        logger.warning(f"可用GPU数量({gpu_count})少于tensor_parallel_size({args.tensor_parallel_size})，自动调整")
+        args.tensor_parallel_size = gpu_count
+    
+    # 保守的资源配置
+    args.max_num_seqs = min(getattr(args, 'max_num_seqs', 128), 1)
+    args.gpu_memory_utilization = min(args.gpu_memory_utilization, 0.8)
+    
+    logger.info(f"调整后的引擎配置: tensor_parallel_size={args.tensor_parallel_size}, "
+                f"gpu_memory_utilization={args.gpu_memory_utilization}, max_num_seqs={args.max_num_seqs}")
 
-        logger.info("Starting vLLM engine with AsyncLLMEngine...")
-        logger.info(f"Model path: {model_path}")
-        logger.info(f"Tensor parallel size: {tensor_parallel_size}")
-        logger.info(f"Pipeline parallel size: {pipeline_parallel_size}")
-        logger.info(f"GPU memory utilization: {gpu_memory_utilization}")
-        logger.info(f"Max model length: {max_model_len}")
-        logger.info(f"Max sequences: {max_num_seqs}")
-        logger.info(f"Max batched tokens: {max_num_batched_tokens}")
-        logger.info(f"Device: {device}")
-        logger.info(f"Data type: {dtype}")
-        logger.info(f"Quantization: {quantization}")
-        logger.info(f"Trust remote code: {trust_remote_code}")
-        logger.info(f"Swap space: {swap_space}GB")
-        logger.info(f"Scheduling policy: {scheduling_policy}")
 
-        # 构建引擎参数
-        engine_args_dict = {
-            "model": model_path,
-            "tokenizer": model_path,  # 通常tokenizer和model路径相同
-            "tensor_parallel_size": tensor_parallel_size,
-            "pipeline_parallel_size": pipeline_parallel_size,
-            "gpu_memory_utilization": gpu_memory_utilization,
-            "max_num_seqs": max_num_seqs,
-            "max_num_batched_tokens": max_num_batched_tokens,
-            "swap_space": swap_space,
-            "device": device,
-            "dtype": dtype,
-            "trust_remote_code": trust_remote_code,
-            "enable_chunked_prefill": enable_chunked_prefill,
-            "disable_log_stats": disable_log_stats,
-            "scheduling_policy": scheduling_policy
-        }
-
-        # 添加可选参数
-        if max_model_len:
-            engine_args_dict["max_model_len"] = max_model_len
-
-        # 处理量化参数
-        if quantization and quantization.lower() != "none":
-            engine_args_dict["quantization"] = quantization
-
-        logger.info(f"Engine arguments: {engine_args_dict}")
-
-        # 创建引擎参数对象
-        engine_args = AsyncEngineArgs(**engine_args_dict)
-
-        logger.info("Creating AsyncLLMEngine...")
-
-        # 创建异步引擎
-        engine = AsyncLLMEngine.from_engine_args(engine_args)
-
-        logger.info("vLLM AsyncLLMEngine started successfully!")
-
-        return engine
-
-    except ImportError as e:
-        logger.error(f"Failed to import vLLM: {e}")
-        logger.error("Please install vLLM: pip install vllm")
+async def start_vllm_engine(args, logger):
+    """启动vLLM引擎"""
+    if not vllm_available:
+        logger.error("vLLM not available, cannot start engine")
         return None
+    
+    try:
+        # 调整配置以匹配可用资源
+        adjust_engine_config_for_resources(args)
+        
+        # 设置环境变量以减少警告
+        os.environ.setdefault("NCCL_SOCKET_IFNAME", "lo")
+        os.environ.setdefault("RAY_DISABLE_IMPORT_WARNING", "1")
+        
+        # 从args获取引擎参数，如果没有则使用默认值
+        engine_args = AsyncEngineArgs(
+            model=getattr(args, 'model_path', '/path/to/model'),
+            tensor_parallel_size=getattr(args, 'tensor_parallel_size', 1),
+            gpu_memory_utilization=getattr(args, 'gpu_memory_utilization', 0.8),
+            max_num_seqs=getattr(args, 'max_num_seqs', 1),
+            max_model_len=getattr(args, 'max_model_len', 4096),
+            trust_remote_code=getattr(args, 'trust_remote_code', True),
+            disable_log_stats=getattr(args, 'disable_log_stats', True),
+            enable_prefix_caching=getattr(args, 'enable_prefix_caching', False),
+            swap_space=getattr(args, 'swap_space', 0),
+            dtype=getattr(args, 'dtype', 'auto'),
+            quantization=getattr(args, 'quantization', None) if getattr(args, 'quantization', 'None') != 'None' else None,
+        )
+        
+        logger.info("Creating AsyncLLMEngine with args:")
+        logger.info(f"  model: {engine_args.model}")
+        logger.info(f"  tensor_parallel_size: {engine_args.tensor_parallel_size}")
+        logger.info(f"  gpu_memory_utilization: {engine_args.gpu_memory_utilization}")
+        logger.info(f"  max_num_seqs: {engine_args.max_num_seqs}")
+        logger.info(f"  max_model_len: {engine_args.max_model_len}")
+        logger.info(f"  quantization: {engine_args.quantization}")
+        
+        # 创建引擎实例
+        engine = AsyncLLMEngine.from_engine_args(engine_args)
+        
+        # 测试引擎是否正常工作
+        await asyncio.sleep(2)  # 给引擎一些初始化时间
+        
+        logger.info("vLLM AsyncLLMEngine started successfully!")
+        return engine
+        
     except Exception as e:
         logger.error(f"Failed to start vLLM engine: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
 def stop_vllm_engine(engine, logger):
-    """
-    停止vLLM引擎
+    """停止vLLM引擎"""
+    global vllm_process
     
-    Args:
-        engine: AsyncLLMEngine对象
-        logger: 日志记录器
-    """
-    if engine is None:
-        return
+    if engine:
+        try:
+            # 如果引擎有stop方法，调用它
+            if hasattr(engine, 'stop'):
+                engine.stop()
+            logger.info("vLLM engine stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping vLLM engine: {e}")
+    
+    # 清理可能存在的进程
+    if vllm_process and vllm_process.poll() is None:
+        try:
+            # 先尝试优雅关闭
+            vllm_process.terminate()
+            vllm_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            # 如果优雅关闭失败，强制杀死
+            vllm_process.kill()
+            vllm_process.wait()
+        except Exception as e:
+            logger.warning(f"Error cleaning up vLLM process: {e}")
+        finally:
+            vllm_process = None
 
+
+def cleanup_vllm_processes():
+    """清理所有vLLM相关进程"""
     try:
-        logger.info("Stopping vLLM AsyncLLMEngine...")
-
-        # AsyncLLMEngine 通常会在程序结束时自动清理
-        # 如果有特定的清理方法，可以在这里调用
-        if hasattr(engine, 'engine') and hasattr(engine.engine, 'stop'):
-            engine.engine.stop()
-
-        logger.info("vLLM AsyncLLMEngine stopped")
-
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if 'vllm' in proc.info['name'].lower() or \
+                   any('vllm' in arg.lower() for arg in proc.info['cmdline'] if arg):
+                    proc.kill()
+                    logger.info(f"Killed vLLM process: {proc.info['pid']}")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
     except Exception as e:
-        logger.error(f"Error stopping vLLM engine: {e}") 
+        logger.warning(f"Error during vLLM process cleanup: {e}") 

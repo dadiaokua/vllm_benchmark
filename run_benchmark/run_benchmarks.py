@@ -16,7 +16,7 @@ from logger_utils import setup_logger
 from argument_parser import parse_args, print_benchmark_config, validate_args
 from engine_manager import start_vllm_engine, stop_vllm_engine
 from server_manager import setup_servers_if_needed, cleanup_servers, setup_request_model_name
-from result_processor import prepare_results_file, process_and_save_results
+from result_processor import process_and_save_results
 from task_manager import setup_benchmark_tasks, run_benchmark_tasks, cancel_monitor_task
 
 

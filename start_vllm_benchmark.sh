@@ -6,16 +6,23 @@
 # =============================================================================
 
 # ========== vLLM引擎参数 ==========
+START_ENGINE="true"
 MODEL_PATH="/home/llm/model_hub/Qwen2.5-32B-Instruct"
 TENSOR_PARALLEL_SIZE=8
+PIPELINE_PARALLEL_SIZE=1
 GPU_MEMORY_UTILIZATION=0.9
 MAX_MODEL_LEN=8124
-TRUST_REMOTE_CODE="true"
-DISABLE_LOG_STATS="true"
-ENABLE_PREFIX_CACHING="false"
+MAX_NUM_SEQS=256
+MAX_NUM_BATCHED_TOKENS=65536
 SWAP_SPACE=0
+DEVICE="cuda"
 DTYPE="auto"
 QUANTIZATION="None"
+TRUST_REMOTE_CODE="true"
+ENABLE_CHUNKED_PREFILL="false"
+DISABLE_LOG_STATS="true"
+ENABLE_PREFIX_CACHING="false"
+SCHEDULING_POLICY="priority"
 
 # ========== 基础连接参数 ==========
 VLLM_URL="http://222.201.144.119:8000/v1"
@@ -59,17 +66,23 @@ echo "         vLLM Benchmark 配置信息"
 echo "=========================================="
 echo ""
 echo "🚀 vLLM引擎参数:"
+echo "  Start Engine: $START_ENGINE"
 echo "  Model Path: $MODEL_PATH"
 echo "  Tensor Parallel Size: $TENSOR_PARALLEL_SIZE"
+echo "  Pipeline Parallel Size: $PIPELINE_PARALLEL_SIZE"
 echo "  GPU Memory Utilization: $GPU_MEMORY_UTILIZATION"
-echo "  Max Num Seqs: $MAX_NUM_SEQS"
-echo "  Max Model Len: $MAX_MODEL_LEN"
-echo "  Trust Remote Code: $TRUST_REMOTE_CODE"
-echo "  Disable Log Stats: $DISABLE_LOG_STATS"
-echo "  Enable Prefix Caching: $ENABLE_PREFIX_CACHING"
-echo "  Swap Space: $SWAP_SPACE"
+echo "  Max Model Length: $MAX_MODEL_LEN"
+echo "  Max Num Sequences: $MAX_NUM_SEQS"
+echo "  Max Num Batched Tokens: $MAX_NUM_BATCHED_TOKENS"
+echo "  Swap Space: ${SWAP_SPACE}GB"
+echo "  Device: $DEVICE"
 echo "  Data Type: $DTYPE"
 echo "  Quantization: $QUANTIZATION"
+echo "  Trust Remote Code: $TRUST_REMOTE_CODE"
+echo "  Enable Chunked Prefill: $ENABLE_CHUNKED_PREFILL"
+echo "  Disable Log Stats: $DISABLE_LOG_STATS"
+echo "  Enable Prefix Caching: $ENABLE_PREFIX_CACHING"
+echo "  Scheduling Policy: $SCHEDULING_POLICY"
 echo ""
 echo "🔗 基础连接参数:"
 echo "  vLLM URL: $VLLM_URL"
