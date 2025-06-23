@@ -11,6 +11,7 @@ import subprocess
 import time
 import signal
 import psutil
+import pynvml
 
 # 导入vLLM相关模块
 try:
@@ -30,11 +31,56 @@ vllm_process = None
 def get_gpu_count():
     """获取可用的GPU数量"""
     try:
-        result = subprocess.run(['nvidia-smi', '--query-gpu=count', '--format=csv,noheader,nounits'], 
-                              capture_output=True, text=True, check=True)
-        return int(result.stdout.strip())
-    except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
-        logger.warning("无法获取GPU数量，假设使用CPU")
+        # 方法1: 使用nvidia-ml-py (推荐)
+        try:
+            pynvml.nvmlInit()
+            gpu_count = pynvml.nvmlDeviceGetCount()
+            logger.info(f"通过pynvml检测到 {gpu_count} 个GPU")
+            return gpu_count
+        except ImportError:
+            logger.debug("pynvml不可用，使用nvidia-smi")
+        
+        # 方法2: 使用nvidia-smi --list-gpus (更可靠)
+        try:
+            result = subprocess.run(['nvidia-smi', '--list-gpus'], 
+                                  capture_output=True, text=True, check=True)
+            gpu_lines = [line for line in result.stdout.strip().split('\n') if line.strip() and 'GPU' in line]
+            gpu_count = len(gpu_lines)
+            logger.info(f"通过nvidia-smi --list-gpus检测到 {gpu_count} 个GPU")
+            return gpu_count
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.debug("nvidia-smi --list-gpus失败，尝试其他方法")
+        
+        # 方法3: 使用nvidia-smi --query-gpu=count (处理多行输出)
+        try:
+            result = subprocess.run(['nvidia-smi', '--query-gpu=count', '--format=csv,noheader,nounits'], 
+                                  capture_output=True, text=True, check=True)
+            lines = [line.strip() for line in result.stdout.strip().split('\n') if line.strip()]
+            if lines:
+                # 如果有多行，说明有多个GPU，行数就是GPU数量
+                gpu_count = len(lines)
+                logger.info(f"通过nvidia-smi count查询检测到 {gpu_count} 个GPU")
+                return gpu_count
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            logger.debug("nvidia-smi count查询失败")
+        
+        # 方法4: 使用nvidia-smi -L (备用方法)
+        try:
+            result = subprocess.run(['nvidia-smi', '-L'], 
+                                  capture_output=True, text=True, check=True)
+            gpu_lines = [line for line in result.stdout.strip().split('\n') if line.strip() and 'GPU' in line]
+            gpu_count = len(gpu_lines)
+            logger.info(f"通过nvidia-smi -L检测到 {gpu_count} 个GPU")
+            return gpu_count
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logger.debug("nvidia-smi -L失败")
+            
+        # 如果所有方法都失败了
+        logger.warning("所有GPU检测方法都失败，假设使用CPU")
+        return 0
+        
+    except Exception as e:
+        logger.warning(f"GPU检测过程中出现异常: {e}，假设使用CPU")
         return 0
 
 
