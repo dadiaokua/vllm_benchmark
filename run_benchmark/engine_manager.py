@@ -114,25 +114,31 @@ async def start_vllm_engine(args, logger):
         # 调整配置以匹配可用资源
         adjust_engine_config_for_resources(args)
         
-        # 设置环境变量以减少警告
+        # 设置环境变量以减少警告和避免LLVM错误
         os.environ.setdefault("NCCL_SOCKET_IFNAME", "lo")
         os.environ.setdefault("RAY_DISABLE_IMPORT_WARNING", "1")
+        # 添加LLVM相关环境变量
+        os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+        os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:512")
         
-        # 从args获取引擎参数，如果没有则使用默认值
+        # 从args获取引擎参数，使用更保守的默认值
         engine_args = AsyncEngineArgs(
             model=getattr(args, 'model_path', '/path/to/model'),
-            tensor_parallel_size=getattr(args, 'tensor_parallel_size', 1),
-            gpu_memory_utilization=getattr(args, 'gpu_memory_utilization', 0.8),
+            tensor_parallel_size=getattr(args, 'tensor_parallel_size', 8),
+            pipeline_parallel_size=getattr(args, 'pipeline_parallel_size', 1),
+            gpu_memory_utilization=getattr(args, 'gpu_memory_utilization', 0.9),
             max_model_len=getattr(args, 'max_model_len', 4096),
             disable_log_stats=getattr(args, 'disable_log_stats', True),
-            enable_prefix_caching=getattr(args, 'enable_prefix_caching', False),
+            enable_prefix_caching=False,  # 强制禁用前缀缓存
             dtype=getattr(args, 'dtype', 'half'),
-            quantization=getattr(args, 'quantization', None) if getattr(args, 'quantization', 'None') != 'None' else None,
+            quantization=None,  # 暂时禁用量化避免LLVM错误
+            scheduling_policy=getattr(args, 'scheduling_policy', 'priority'),
         )
         
-        logger.info("Creating AsyncLLMEngine with args:")
+        logger.info("Creating AsyncLLMEngine with conservative args:")
         logger.info(f"  model: {engine_args.model}")
         logger.info(f"  tensor_parallel_size: {engine_args.tensor_parallel_size}")
+        logger.info(f"  pipeline_parallel_size: {engine_args.pipeline_parallel_size}")
         logger.info(f"  gpu_memory_utilization: {engine_args.gpu_memory_utilization}")
         logger.info(f"  max_model_len: {engine_args.max_model_len}")
         logger.info(f"  quantization: {engine_args.quantization}")
@@ -145,7 +151,7 @@ async def start_vllm_engine(args, logger):
         engine = AsyncLLMEngine.from_engine_args(engine_args)
         
         # 测试引擎是否正常工作
-        await asyncio.sleep(2)  # 给引擎一些初始化时间
+        await asyncio.sleep(5)  # 给引擎更多初始化时间
         
         logger.info("vLLM AsyncLLMEngine started successfully!")
         return engine
