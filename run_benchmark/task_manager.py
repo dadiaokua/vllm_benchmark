@@ -12,6 +12,9 @@ import os
 from transformers import AutoTokenizer
 from argument_parser import safe_float_conversion
 
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # 导入基准测试相关模块
 from BenchmarkClient.BenchmarkClient import BenchmarkClient
 from util.BaseUtil import initialize_clients

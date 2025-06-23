@@ -7,7 +7,12 @@
 import json
 import time
 import logging
+import sys
+import os
 from datetime import datetime
+
+# 添加项目根目录到Python路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 导入工具模块
 from util.FileSaveUtil import save_benchmark_results
