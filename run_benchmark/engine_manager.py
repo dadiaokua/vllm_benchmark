@@ -123,13 +123,10 @@ async def start_vllm_engine(args, logger):
             model=getattr(args, 'model_path', '/path/to/model'),
             tensor_parallel_size=getattr(args, 'tensor_parallel_size', 1),
             gpu_memory_utilization=getattr(args, 'gpu_memory_utilization', 0.8),
-            max_num_seqs=getattr(args, 'max_num_seqs', 1),
             max_model_len=getattr(args, 'max_model_len', 4096),
-            trust_remote_code=getattr(args, 'trust_remote_code', True),
             disable_log_stats=getattr(args, 'disable_log_stats', True),
             enable_prefix_caching=getattr(args, 'enable_prefix_caching', False),
-            swap_space=getattr(args, 'swap_space', 0),
-            dtype=getattr(args, 'dtype', 'auto'),
+            dtype=getattr(args, 'dtype', 'half'),
             quantization=getattr(args, 'quantization', None) if getattr(args, 'quantization', 'None') != 'None' else None,
         )
         
@@ -137,9 +134,12 @@ async def start_vllm_engine(args, logger):
         logger.info(f"  model: {engine_args.model}")
         logger.info(f"  tensor_parallel_size: {engine_args.tensor_parallel_size}")
         logger.info(f"  gpu_memory_utilization: {engine_args.gpu_memory_utilization}")
-        logger.info(f"  max_num_seqs: {engine_args.max_num_seqs}")
         logger.info(f"  max_model_len: {engine_args.max_model_len}")
         logger.info(f"  quantization: {engine_args.quantization}")
+        logger.info(f"  dtype: {engine_args.dtype}")
+        logger.info(f"  disable_log_stats: {engine_args.disable_log_stats}")
+        logger.info(f"  enable_prefix_caching: {engine_args.enable_prefix_caching}")
+        logger.info(f"  scheduling_policy: {engine_args.scheduling_policy}")
         
         # 创建引擎实例
         engine = AsyncLLMEngine.from_engine_args(engine_args)
