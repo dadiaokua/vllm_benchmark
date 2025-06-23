@@ -171,6 +171,17 @@ python3 run_benchmarks.py \
     --tokenizer "$TOKENIZER_PATH" \
     --request_model_name "$REQUEST_MODEL_NAME" \
     --start_engine "$START_ENGINE" \
+    --model_path "$MODEL_PATH" \
+    --tensor_parallel_size "$TENSOR_PARALLEL_SIZE" \
+    --gpu_memory_utilization "$GPU_MEMORY_UTILIZATION" \
+    --max_model_len "$MAX_MODEL_LEN" \
+    --max_num_seqs "$MAX_NUM_SEQS" \
+    --max_num_batched_tokens "$MAX_NUM_BATCHED_TOKENS" \
+    --dtype "$DTYPE" \
+    --quantization "$QUANTIZATION" \
+    --disable_log_stats "$DISABLE_LOG_STATS" \
+    --enable_prefix_caching "$ENABLE_PREFIX_CACHING" \
+    --scheduling_policy "$SCHEDULING_POLICY" 
 
 echo ""
 echo "=========================================="
