@@ -121,7 +121,7 @@ async def start_vllm_engine(args, logger):
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
         os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "max_split_size_mb:512")
         
-        # 从args获取引擎参数，使用更保守的默认值
+        # 从args获取引擎参数，如果没有则使用默认值
         engine_args = AsyncEngineArgs(
             model=getattr(args, 'model_path', '/path/to/model'),
             tensor_parallel_size=getattr(args, 'tensor_parallel_size', 8),
