@@ -75,9 +75,11 @@ def parse_args(logger):
     parser.add_argument('--disable_log_stats', type=bool, default=True, help='Disable log stats')
     parser.add_argument('--enable_prefix_caching', type=bool, default=False, help='Enable prefix caching')
     parser.add_argument('--swap_space', type=int, default=0, help='Swap space in GB')
-    parser.add_argument('--dtype', type=str, default="auto", help='Data type')
+    parser.add_argument('--dtype', type=str, default="float16", help='Data type')
     parser.add_argument('--quantization', type=str, default="None", help='Quantization method')
     parser.add_argument('--max_num_seqs', type=int, default=1, help='Maximum number of sequences')
+    parser.add_argument('--max_num_batched_tokens', type=int, default=65536, help='Maximum number of batched tokens')
+    parser.add_argument('--scheduling_policy', type=str, default="priority", help='Scheduling policy')
     
     args = parser.parse_args()
     return args
