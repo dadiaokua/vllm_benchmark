@@ -1,5 +1,9 @@
 from datetime import datetime
 
+def get_monitor_file_time():
+    """动态生成监控文件时间戳"""
+    return datetime.now().strftime("%m_%d_%H_%M")
+
 GLOBAL_CONFIG = {
     "latency_slo": 5,
     "output_tokens": 256,
@@ -11,7 +15,7 @@ GLOBAL_CONFIG = {
     "whether_fairness": 1,
     "max_granularity": 10,
     "round_time": 60,
-    "monitor_file_time": datetime.now().strftime("%m_%d_%H_%M"),
+    "monitor_file_time": get_monitor_file_time(),  # 动态生成时间戳
     "exp_time": 36000,
     "avg_success_rate": 0.9,
     "max_exchange_times": 1,

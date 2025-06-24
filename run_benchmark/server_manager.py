@@ -24,8 +24,13 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def setup_servers_if_needed(args):
+def setup_servers(args):
     """根据需要设置服务器"""
+    # 设置请求模型名称
+    if args.request_model_name:
+        GLOBAL_CONFIG['request_model_name'] = args.request_model_name
+    
+    # 设置隧道（如果需要）
     if tunnel_available and getattr(args, "use_tunnel", 0):
         return setup_vllm_servers(args.vllm_url, args.local_port, args.remote_port)
     
@@ -41,10 +46,4 @@ def cleanup_servers(servers):
         for server in servers:
             stop_tunnel(server)
     else:
-        logger.warning("TunnelUtil not available, skipping server cleanup")
-
-
-def setup_request_model_name(args):
-    """设置请求模型名称"""
-    if args.request_model_name:
-        GLOBAL_CONFIG['request_model_name'] = args.request_model_name 
+        logger.warning("TunnelUtil not available, skipping server cleanup") 

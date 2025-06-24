@@ -1,43 +1,59 @@
 #!/usr/bin/env python3
 """
-vLLM基准测试主程序
-重构版本 - 只保留主干逻辑，具体功能已分离到各个模块
+主基准测试程序
+协调各个模块完成完整的基准测试流程
 """
 
 import asyncio
-import time
-import traceback
+import logging
 import sys
 import os
+import traceback
+from datetime import datetime
+
+# 获取当前脚本目录和项目根目录
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+
+# 切换到项目根目录，确保所有相对路径正确
+os.chdir(project_root)
+print(f"Working directory changed to: {os.getcwd()}")
 
 # 添加项目根目录到Python路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from config.Config import GLOBAL_CONFIG
-from plot.plotMain import plot_result
+sys.path.insert(0, project_root)
 
 # 导入分离的模块
-from logger_utils import setup_logger
-from argument_parser import parse_args, print_benchmark_config, validate_args
-from engine_manager import start_vllm_engine, stop_vllm_engine
-from server_manager import setup_servers_if_needed, cleanup_servers, setup_request_model_name
-from result_processor import process_and_save_results
-from task_manager import setup_benchmark_tasks, run_benchmark_tasks, cancel_monitor_task
+from run_benchmark.logger_utils import setup_logging
+from run_benchmark.argument_parser import parse_and_validate_arguments
+from run_benchmark.engine_manager import start_vllm_engine, stop_vllm_engine
+from run_benchmark.server_manager import setup_servers, cleanup_servers
+from run_benchmark.task_manager import setup_benchmark_tasks, run_benchmark_tasks, cancel_monitor_task
+from run_benchmark.result_processor import process_and_save_results
+
+# 导入配置和绘图模块
+from config.Config import GLOBAL_CONFIG
+
+try:
+    from plot.plotMain import plot_result
+except ImportError:
+    plot_result = None
 
 
 async def main():
     """主函数 - 协调各个模块完成基准测试"""
     # 1. 初始化日志系统
-    logger = setup_logger()
+    logger = setup_logging()
     
     # 2. 解析和验证参数
-    args = parse_args(logger)
-    print_benchmark_config(args, logger)
-    
-    args = validate_args(args, logger)
+    args = parse_and_validate_arguments()
     if args is None:
         logger.error("Parameter validation failed, exiting...")
         return
+    
+    logger.info("=== Benchmark Configuration ===")
+    logger.info(f"Experiment type: {args.exp}")
+    logger.info(f"Short clients: {args.short_clients}, Long clients: {args.long_clients}")
+    logger.info(f"Round time: {args.round_time}s, Total rounds: {args.round}")
 
     # 3. 启动vLLM引擎（如果需要）
     vllm_engine = None
@@ -56,14 +72,13 @@ async def main():
         GLOBAL_CONFIG['exp_time'] = args.round_time * args.round * 3
 
     # 5. 设置服务器和连接
-    servers = setup_servers_if_needed(args)
-    setup_request_model_name(args)
+    servers = setup_servers(args)
 
     # 6. 创建结果队列
     all_results = asyncio.Queue()
     request_queue = asyncio.Queue()
 
-    start_time = time.time()
+    start_time = datetime.now().timestamp()
 
     try:
         # 7. 设置和运行基准测试任务

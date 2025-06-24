@@ -82,6 +82,9 @@ class ExperimentMonitor:
         self.logger = self._setup_logger()
         self.log_gpu_data = use_tunnel
         self.timing_stats = {}  # 用于存储时间统计
+        
+        # 为这个监控器实例生成唯一的时间戳
+        self.monitor_timestamp = datetime.now().strftime("%m_%d_%H_%M")
 
         # 设置公平性调整策略映射
         self.fairness_strategies = {
@@ -103,6 +106,9 @@ class ExperimentMonitor:
             # 创建控制台处理器
             ch = logging.StreamHandler()
             ch.setLevel(logging.INFO)
+            
+            # 确保log目录存在
+            os.makedirs('log', exist_ok=True)
             
             # 创建文件处理器
             fh = logging.FileHandler(filename=f'log/monitor_{self.exp_type}.log', encoding="utf-8", mode="w")
@@ -167,11 +173,23 @@ class ExperimentMonitor:
                             f"Memory: {mem_used}/{mem_total} MiB")
                 log_lines.append(log_line)
 
-            # 可选：追加记录到文件
-            with open(f"tmp_result/gpu_monitor_log_{GLOBAL_CONFIG.get('monitor_file_time')}.txt", "a") as f:
+            # 生成GPU监控日志文件路径
+            gpu_log_file = f"tmp_result/gpu_monitor_log_{self.monitor_timestamp}.txt"
+            
+            # 确保目录存在
+            os.makedirs("tmp_result", exist_ok=True)
+            
+            # 追加记录到文件
+            with open(gpu_log_file, "a", encoding="utf-8") as f:
                 for log in log_lines:
                     f.write(log + "\n")
+                    
+            self.logger.debug(f"GPU status logged to {gpu_log_file}")
 
+        except subprocess.CalledProcessError as e:
+            self.logger.warning(f"Failed to run nvidia-smi: {e}")
+        except FileNotFoundError:
+            self.logger.warning("nvidia-smi not found. GPU monitoring disabled.")
         except Exception as e:
             self.logger.warning(f"Failed to fetch GPU status: {e}")
 

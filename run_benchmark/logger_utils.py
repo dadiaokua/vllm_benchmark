@@ -8,10 +8,10 @@ import os
 import logging
 
 
-def setup_logger():
+def setup_logging():
     """设置日志记录器"""
     # 日志文件夹和文件名
-    log_dir = "../log"
+    log_dir = "log"
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "run_benchmarks.log")
 

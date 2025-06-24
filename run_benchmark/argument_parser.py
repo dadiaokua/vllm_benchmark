@@ -174,4 +174,18 @@ def print_benchmark_config(args, logger):
         logger.info(f"Data Type: {args.dtype}")
         logger.info(f"Quantization: {args.quantization}")
     
-    logger.info("===============================") 
+    logger.info("===============================")
+
+
+def parse_and_validate_arguments():
+    """解析和验证命令行参数的统一函数"""
+    # 解析参数
+    args = parse_args(logger)
+    
+    # 打印配置
+    print_benchmark_config(args, logger)
+    
+    # 验证参数
+    validated_args = validate_args(args, logger)
+    
+    return validated_args 

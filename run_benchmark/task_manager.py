@@ -43,10 +43,10 @@ async def setup_benchmark_tasks(args, all_results, request_queue, logger):
     tokenizer = AutoTokenizer.from_pretrained(args.tokenizer, trust_remote_code=True)
 
     # 加载预格式化的prompt数据
-    with open("../prompt_hub/short_prompts.json", "r", encoding="utf-8") as f:
+    with open("prompt_hub/short_prompts.json", "r", encoding="utf-8") as f:
         short_formatted_json = json.load(f)
 
-    with open("../prompt_hub/long_prompts.json", "r", encoding="utf-8") as f:
+    with open("prompt_hub/long_prompts.json", "r", encoding="utf-8") as f:
         long_formatted_json = json.load(f)
 
     openAI_client = initialize_clients(args.local_port)

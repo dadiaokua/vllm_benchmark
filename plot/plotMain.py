@@ -216,14 +216,23 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
                        "Fairness Ratio", legend_handles, legend_labels)
 
     # 2. Jain's公平性指数
-    f_values = [result['f_result'] for result in fairness_results]
-    times = list(range(len(f_values)))
-    if len(times) == len(f_values):
-        plot_fairness_index(axs2[1], f_values, times)
+    if fairness_results:
+        f_values = [result['f_result'] for result in fairness_results]
+        times = list(range(len(f_values)))
+        if len(times) == len(f_values):
+            plot_fairness_index(axs2[1], f_values, times)
+        else:
+            print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
+            min_len = min(len(times), len(f_values))
+            plot_fairness_index(axs2[1], f_values[:min_len], times[:min_len])
     else:
-        print(f"Warning: Mismatched lengths - times: {len(times)}, f_values: {len(f_values)}")
-        min_len = min(len(times), len(f_values))
-        plot_fairness_index(axs2[1], f_values[:min_len], times[:min_len])
+        # 如果没有fairness数据，显示空图表
+        axs2[1].text(0.5, 0.5, 'No Fairness Data Available', 
+                     horizontalalignment='center', verticalalignment='center',
+                     transform=axs2[1].transAxes, fontsize=12)
+        axs2[1].set_title("Jain's Fairness Index")
+        axs2[1].set_xlabel("Time")
+        axs2[1].set_ylabel("Fairness Index")
     
     # 3. credit值
     plot_client_metric(axs2[2], sorted_all_results, short_clients, long_clients,
@@ -384,8 +393,14 @@ def plot_result(plot_data):
         all_results = json.load(f)
 
     # Load fairness results and create third figure
-    with open("tmp_result/tmp_fairness_result.json", 'r') as f:
-        fairness_results = json.load(f)
+    fairness_file_path = "tmp_result/tmp_fairness_result.json"
+    try:
+        with open(fairness_file_path, 'r') as f:
+            fairness_results = json.load(f)
+    except FileNotFoundError:
+        print(f"Warning: Fairness results file not found at {fairness_file_path}")
+        print("Continuing without fairness data...")
+        fairness_results = []
 
     if len(all_results) >= 1:
         # Group results by short/long and sort by client_index
