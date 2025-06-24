@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""
-简化的vLLM abort功能测试
-"""
 
 import asyncio
 import uuid
 import logging
-from typing import Any, Union, List
+from typing import Any
 from vllm_engine_helper import VLLMEngineManager, create_sampling_params
 from prompt_loader import PromptLoader
 
