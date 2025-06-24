@@ -116,7 +116,7 @@ class BenchmarkClient:
             self.qpm = self.qpm * self.qpm_ratio
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
             result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
-
+            
             if i != 0:
                 # 等待 monitor 通知处理完成
                 await self.monitor_done_event.wait()

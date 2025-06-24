@@ -49,7 +49,7 @@ async def main():
     if args is None:
         logger.error("Parameter validation failed, exiting...")
         return
-    
+
     logger.info("=== Benchmark Configuration ===")
     logger.info(f"Experiment type: {args.exp}")
     logger.info(f"Short clients: {args.short_clients}, Long clients: {args.long_clients}")
