@@ -53,7 +53,7 @@ SLEEP_TIME=1
 # ========== 实验配置参数 ==========
 ROUND_NUM=20
 ROUND_TIME=300
-EXP_NAME="LFS"
+EXP_NAME="QUEUE_LFS"
 USE_TIME_DATA=0
 
 # ========== 模型和tokenizer参数 ==========
