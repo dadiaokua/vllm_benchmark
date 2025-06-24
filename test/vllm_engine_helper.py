@@ -29,12 +29,10 @@ class VLLMEngineManager:
     async def start_engine(self,
                            model_path: str = "/home/llm/model_hub/Llama-3.1-8B",
                            max_num_seqs: int = 4,
-                           gpu_memory_utilization: float = 0.9,
-                           tensor_parallel_size: int = 4,
-                           trust_remote_code: bool = True,
+                           tensor_parallel_size: int = 8,
                            enable_chunked_prefill: bool = False,
                            dtype: str = 'float16',
-                           scheduling_policy: str = "fcfs") -> AsyncLLMEngine:
+                           scheduling_policy: str = "priority") -> AsyncLLMEngine:
         """启动vLLM引擎"""
         logger.info(f"正在启动vLLM引擎，模型: {model_path}")
         logger.info(f"配置: tensor_parallel_size={tensor_parallel_size}, scheduling_policy={scheduling_policy}")
@@ -42,16 +40,12 @@ class VLLMEngineManager:
         engine_args = AsyncEngineArgs(
             model=model_path,
             max_num_seqs=max_num_seqs,
-            gpu_memory_utilization=gpu_memory_utilization,
             tensor_parallel_size=tensor_parallel_size,
-            trust_remote_code=trust_remote_code,
             enable_chunked_prefill=enable_chunked_prefill,
             dtype=dtype,
             scheduling_policy=scheduling_policy,
-            max_model_len=4096,
+            max_model_len=8124,
             enable_prefix_caching=False,
-            swap_space=0,
-            disable_log_stats=True,
         )
 
         self.engine = AsyncLLMEngine.from_engine_args(engine_args)
