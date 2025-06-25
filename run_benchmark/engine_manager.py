@@ -22,6 +22,50 @@ try:
 except ImportError:
     vllm_available = False
 
+
+def setup_vllm_logging(log_level="WARNING", suppress_engine_logs=True):
+    """
+    设置vLLM相关的日志级别
+    
+    Args:
+        log_level: 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+        suppress_engine_logs: 是否抑制引擎请求/完成相关的详细日志
+    """
+    import logging
+    
+    # 设置vLLM相关的logger
+    vllm_loggers = [
+        'vllm',
+        'vllm.async_llm_engine',
+        'vllm.engine.async_llm_engine',
+        'vllm.core.scheduler',
+        'vllm.worker.model_runner',
+        'vllm.executor.gpu_executor',
+        'vllm.model_executor.model_loader'
+    ]
+    
+    log_level_num = getattr(logging, log_level.upper(), logging.WARNING)
+    
+    for logger_name in vllm_loggers:
+        vllm_logger = logging.getLogger(logger_name)
+        vllm_logger.setLevel(log_level_num)
+        
+        # 如果要抑制引擎日志，特别处理async_llm_engine
+        if suppress_engine_logs and 'async_llm_engine' in logger_name:
+            # 添加一个过滤器来屏蔽特定消息
+            class EngineLogFilter(logging.Filter):
+                def filter(self, record):
+                    # 屏蔽"Added request"和"Finished request"消息
+                    message = record.getMessage()
+                    if ("Added request" in message or 
+                        "Finished request" in message or
+                        "Aborted request" in message):
+                        return False
+                    return True
+            
+            vllm_logger.addFilter(EngineLogFilter())
+
+
 logger = logging.getLogger(__name__)
 
 # 全局变量存储引擎进程
@@ -111,6 +155,22 @@ async def start_vllm_engine(args, logger):
         return None
     
     try:
+        # 导入配置（仅在需要时导入以避免循环依赖）
+        try:
+            from config.Config import GLOBAL_CONFIG
+            suppress_logs = GLOBAL_CONFIG.get("suppress_vllm_engine_logs", True)
+            log_level = GLOBAL_CONFIG.get("vllm_log_level", "WARNING")
+        except ImportError:
+            suppress_logs = True  # 默认抑制日志
+            log_level = "WARNING"
+        
+        # 抑制vLLM详细日志
+        if suppress_logs:
+            setup_vllm_logging(log_level, True)
+            logger.info("✓ vLLM详细日志已抑制")
+        else:
+            logger.info("ⓘ vLLM详细日志保持开启")
+        
         # 调整配置以匹配可用资源
         adjust_engine_config_for_resources(args)
         

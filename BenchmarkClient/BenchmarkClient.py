@@ -201,10 +201,7 @@ class BenchmarkClient:
             self.qpm = self.qpm * self.qpm_ratio
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
             result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
-            
-            # 每次benchmark结束后，终止引擎内的所有活跃请求
-            await self._abort_all_engine_requests()
-            
+
             if i != 0:
                 # 等待 monitor 通知处理完成
                 await self.monitor_done_event.wait()
@@ -212,8 +209,22 @@ class BenchmarkClient:
                 if i == 1:
                     self.results[-1]["fairness_ratio"] = self.fairness_ratio
 
-            benchmark_experiment.cleanup()
+            # 清理实验资源
+            if benchmark_experiment and hasattr(benchmark_experiment, 'cleanup'):
+                try:
+                    if asyncio.iscoroutinefunction(benchmark_experiment.cleanup):
+                        await benchmark_experiment.cleanup()
+                    else:
+                        benchmark_experiment.cleanup()
+                    self.logger.debug(f"Client {self.client_id}: 实验清理完成")
+                except Exception as e:
+                    self.logger.warning(f"Client {self.client_id}: 实验清理时出现警告: {e}")
+            else:
+                self.logger.debug(f"Client {self.client_id}: 实验对象无cleanup方法，跳过清理")
 
+            # 每次benchmark结束后，终止引擎内的所有活跃请求
+            await self._abort_all_engine_requests()
+            
             # Store and update results
             if result:
                 self.results.append(result)

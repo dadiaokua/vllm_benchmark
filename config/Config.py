@@ -21,11 +21,15 @@ GLOBAL_CONFIG = {
     "max_exchange_times": 1,
     "prompt_max_len": 10000,
     "request_model_name": "",
-    "buffer_ratio": 0.5,
+    "buffer_ratio": 0.2,
     
     # AsyncLLMEngine采样参数
     "sampling_temperature": 0.7,
     "sampling_top_p": 0.9,
     "sampling_top_k": -1,  # -1表示不使用top_k
     "sampling_repetition_penalty": 1.0,
+    
+    # vLLM日志控制
+    "vllm_log_level": "WARNING",  # 可选: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    "suppress_vllm_engine_logs": True,  # 是否抑制引擎请求/完成日志
 }

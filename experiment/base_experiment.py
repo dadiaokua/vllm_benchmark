@@ -211,3 +211,6 @@ class BaseExperiment:
             "success_rate": self.metrics['successful_requests'] / self.metrics['total_requests'] if self.metrics[
                                                                                                         'total_requests'] > 0 else 0
         }
+
+    async def cleanup(self):
+        return None

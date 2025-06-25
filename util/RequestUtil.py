@@ -408,12 +408,6 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
             if sleep_time > 0:
                 sleep_start = time.time()
                 await asyncio.sleep(sleep_time)
-                # if sleep_time > 5:
-                #     sleep_end = time.time()
-                #     experiment.logger.info(f"[{client_id}] target_time: {target_time:.6f}, "
-                #                            f"current_time: {datetime.fromtimestamp(current_time).strftime('%H:%M:%S.%f')}, "
-                #                            f"sleep_time: {datetime.fromtimestamp(sleep_time).strftime('%H:%M:%S.%f')}, "
-                #                            f"actual_sleep: {sleep_end - sleep_start:.6f}")
             else:
                 experiment.logger.warning(
                     f"[{client_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
