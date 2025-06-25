@@ -81,6 +81,9 @@ class BenchmarkClient:
 
         self.experiment_config = None
         self.experiment = None
+        
+        # 添加request ID跟踪
+        self.active_request_ids = set()  # 跟踪当前活跃的请求ID
 
         # 设置logger（只设置一次，防止重复handler）
         self.logger = self._setup_logger()
@@ -107,6 +110,88 @@ class BenchmarkClient:
 
         return logger
 
+    def register_request_id(self, request_id):
+        """注册一个新的请求ID"""
+        self.active_request_ids.add(request_id)
+        self.logger.debug(f"Client {self.client_id}: 注册请求 {request_id}")
+
+    def unregister_request_id(self, request_id):
+        """注销一个请求ID"""
+        self.active_request_ids.discard(request_id)
+        self.logger.debug(f"Client {self.client_id}: 注销请求 {request_id}")
+
+    async def _abort_all_engine_requests(self):
+        """终止引擎内的所有活跃请求，确保每轮测试之间的干净状态"""
+        if not self.active_request_ids:
+            self.logger.debug(f"Client {self.client_id}: 没有活跃的请求需要abort")
+            return True
+        
+        try:
+            # 检查是否有直接的vLLM引擎访问
+            if 'vllm_engine' not in GLOBAL_CONFIG or GLOBAL_CONFIG['vllm_engine'] is None:
+                self.logger.debug(f"Client {self.client_id}: 没有vLLM引擎访问，跳过abort")
+                return False
+            
+            engine = GLOBAL_CONFIG['vllm_engine']
+            
+            # 使用跟踪的request ID进行批量abort
+            aborted_count = await self._abort_tracked_requests(engine)
+            
+            if aborted_count > 0:
+                self.logger.info(f"✓ Client {self.client_id}: 已abort {aborted_count} 个请求")
+                # 清空跟踪的请求ID
+                self.active_request_ids.clear()
+                # 给引擎一点时间来处理abort
+                await asyncio.sleep(0.1)
+                return True
+            else:
+                self.logger.debug(f"Client {self.client_id}: 没有成功abort任何请求")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Client {self.client_id}: _abort_all_engine_requests 异常: {e}")
+            return False
+
+    async def _abort_tracked_requests(self, engine):
+        """使用跟踪的request ID进行abort"""
+        aborted_count = 0
+        failed_requests = set()
+        
+        # 创建请求ID的副本，避免在迭代时修改
+        request_ids_to_abort = list(self.active_request_ids)
+        
+        self.logger.info(f"Client {self.client_id}: 开始abort {len(request_ids_to_abort)} 个跟踪的请求")
+        
+        for request_id in request_ids_to_abort:
+            try:
+                # 尝试abort
+                success = False
+                
+                # 方法1: 直接调用engine.abort (异步)
+                if hasattr(engine, 'abort'):
+                    try:
+                        await engine.abort(request_id)
+                        success = True
+                        self.logger.debug(f"Client {self.client_id}: 使用engine.abort成功abort {request_id}")
+                    except Exception as e:
+                        self.logger.debug(f"Client {self.client_id}: engine.abort失败 {request_id}: {e}")
+                
+                if success:
+                    aborted_count += 1
+                    self.unregister_request_id(request_id)
+                else:
+                    failed_requests.add(request_id)
+                    
+            except Exception as e:
+                self.logger.debug(f"Client {self.client_id}: abort请求 {request_id} 时出现异常: {e}")
+                failed_requests.add(request_id)
+        
+        # 记录失败的请求
+        if failed_requests:
+            self.logger.warning(f"Client {self.client_id}: 以下请求abort失败: {failed_requests}")
+        
+        return aborted_count
+
     async def run_all_benchmarks(self):
         """Run all benchmark configurations for this client"""
         print(f"Starting benchmarks for client {self.client_id} with {self.round} configurations")
@@ -116,6 +201,9 @@ class BenchmarkClient:
             self.qpm = self.qpm * self.qpm_ratio
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
             result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
+            
+            # 每次benchmark结束后，终止引擎内的所有活跃请求
+            await self._abort_all_engine_requests()
             
             if i != 0:
                 # 等待 monitor 通知处理完成

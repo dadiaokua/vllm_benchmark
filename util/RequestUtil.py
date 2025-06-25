@@ -47,6 +47,9 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
     request_id = str(uuid.uuid4())
 
     try:
+        # 注册请求ID到实验的客户端（如果可用）
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
+            experiment.client.register_request_id(request_id)
         
         # 从配置中获取采样参数
         temperature = GLOBAL_CONFIG.get('sampling_temperature', 0.7)
@@ -96,6 +99,10 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
 
+        # 正常完成时注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+
         return output_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
@@ -105,11 +112,19 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
 
+        # 超时时也要注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+
         experiment.logger.warning(
             f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
 
         return None
     except Exception as e:
+        # 异常时也要注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+        
         experiment.logger.error(f"Error during direct engine request: {str(e)}")
         return None
 
@@ -138,6 +153,10 @@ async def make_request_http_client(client, experiment, request, start_time=None)
     request_id = str(uuid.uuid4())
 
     try:
+        # 注册请求ID到实验的客户端（如果可用）
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
+            experiment.client.register_request_id(request_id)
+        
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model=GLOBAL_CONFIG['request_model_name'],
@@ -155,6 +174,10 @@ async def make_request_http_client(client, experiment, request, start_time=None)
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
 
+        # 正常完成时注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+
         return output_tokens, elapsed_time, tokens_per_second, ttft, len(
             input_token), 1 if elapsed_time <= experiment.latency_slo else 0
 
@@ -164,11 +187,19 @@ async def make_request_http_client(client, experiment, request, start_time=None)
         if hasattr(experiment, 'timeout_count'):
             experiment.timeout_count += 1
 
+        # 超时时也要注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+
         experiment.logger.warning(
             f"Client {experiment.client_id} request timed out after {end_time - start_time} seconds (Total timeouts: {experiment.timeout_count})")
 
         return None
     except Exception as e:
+        # 异常时也要注销请求ID
+        if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+            experiment.client.unregister_request_id(request_id)
+        
         experiment.logger.error(f"Error during request: {str(e)}")
         return None
 
