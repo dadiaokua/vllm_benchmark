@@ -11,7 +11,7 @@ from config.Config import GLOBAL_CONFIG
 from util.FileSaveUtil import save_results
 from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, is_fairness_FCFS
 
-RESULTS_FILE = 'tmp_result/tmp_fairness_result.json'
+RESULTS_FILE = f'tmp_result/tmp_fairness_result_{GLOBAL_CONFIG.get("monitor_file_time")}.json'
 
 def timing_decorator(func):
     """装饰器：用于测量函数执行时间"""
