@@ -74,9 +74,11 @@ class BaseExperiment:
     async def run(self, config_round):
         """运行实验并收集结果"""
 
-        self.logger.info(f"Starting benchmark round {config_round} run with QPS={self.qpm}, output_tokens={self.output_tokens}")
+        self.logger.info(
+            f"Starting benchmark round {config_round} run with QPS={self.qpm}, output_tokens={self.output_tokens}")
         self.logger.info(f"Client ID: {self.client_id}, Concurrency: {self.concurrency}")
-        self.logger.info(f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}, QPS ratio: {self.client.qpm_ratio}")
+        self.logger.info(
+            f"Time ratio: {self.time_ratio}, Active ratio: {self.active_ratio}, QPS ratio: {self.client.qpm_ratio}")
 
         # 创建信号量控制并发
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -85,7 +87,8 @@ class BaseExperiment:
 
         # 记录开始时间
         self.start_time = time.time()
-        self.logger.info(f"Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(
+            f"Benchmark started at {datetime.fromtimestamp(self.start_time).strftime('%Y-%m-%d %H:%M:%S')}")
 
         # 根据并发数创建workers
         if self.qpm < self.concurrency:
@@ -128,7 +131,7 @@ class BaseExperiment:
                 raise TypeError(f"sample_content is not a list! type={type(worker_json)}")
             if len(worker_json) == 0:
                 raise ValueError(f"sample_content is empty! client_index={self.client_id}, worker_id={worker_id}")
-            
+
             random.shuffle(worker_json)
 
             worker_task = asyncio.create_task(
@@ -149,9 +152,8 @@ class BaseExperiment:
         completed_requests, drift_time, total_requests = zip(*worker_results)
 
         # 汇总结果
-        self.num_requests = sum(completed_requests)
+        self.num_requests = sum(total_requests)
         self.drift_time = sum(drift_time)
-        self.logger.info(f"Total requests succeeded: {self.num_requests}")
 
         # 记录结束时间
         self.end_time = time.time()
@@ -159,9 +161,9 @@ class BaseExperiment:
             f"Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 计算指标
-        return await self.calculate_results(sum(completed_requests) / sum(total_requests))
+        return await self.calculate_results(sum(completed_requests), sum(total_requests))
 
-    async def calculate_results(self, completed_requests_rate):
+    async def calculate_results(self, completed_requests, total_requests):
         """计算实验结果指标"""
         if not self.experiment_results or self.start_time is None or self.end_time is None:
             print("Cannot calculate results: experiment has not been run")
@@ -189,7 +191,7 @@ class BaseExperiment:
         self.client.slo_violation_count = self.metrics['slo_violation_count']
 
         # 如果成功率小于80%，则将QPS增加率设置为1
-        if completed_requests_rate < 0.8:
+        if completed_requests / total_requests < 0.8:
             self.client.qpm_ratio = 1
 
         return self.metrics
