@@ -128,23 +128,17 @@ def plot_averaged_results(short_results, long_results, args_concurrency, total_t
     return time_xLabel
 
 
-def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time, filename, exp_type, fairness_results,
-                               qps_with_time):
+def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time, filename, exp_type, qps_with_time):
     """
-    绘制综合性能图表，包括各客户端指标和公平性结果
+    绘制综合性能图表，只包括各客户端的性能指标
     """
-    # 创建两个图：性能指标图和公平性指标图
+    # 创建性能指标图
     fig1, axs1 = plt.subplots(4, 2, figsize=(28, 25))  # 性能指标图
-    fig2, axs2 = plt.subplots(3, 1, figsize=(28, 18))   # 公平性指标图，改为2行1列
     axs1 = axs1.flatten()  # 将2D数组展平为1D，便于索引
-    axs2 = axs2.flatten()
 
     # 添加标题显示参数
     fig1.suptitle(
         f"{exp_type} Performance Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
-        fontsize=16, y=0.98)
-    fig2.suptitle(
-        f"{exp_type} Fairness Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
         fontsize=16, y=0.98)
 
     # 获取所有客户端
@@ -209,6 +203,58 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
                        warm_colors, cool_colors, "slo_violation_count",
                        "Slo Violation Request Numbers", legend_handles, legend_labels)
 
+    # 在性能指标图底部添加共享图例
+    fig1.legend(handles=legend_handles, labels=legend_labels,
+               loc='center', bbox_to_anchor=(0.5, 0.02),
+               ncol=len(short_clients) + len(long_clients),
+               fontsize=10)
+
+    # 优化布局
+    fig1.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
+    # 调整子图间距，为底部图例留出空间
+    fig1.subplots_adjust(top=0.92, bottom=0.1)
+
+    # 创建figure文件夹（如果不存在）
+    if not os.path.exists('figure'):
+        os.makedirs('figure')
+
+    # 保存图表
+    fig1.savefig(f'figure/performance_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
+
+    plt.show()
+
+
+def plot_fairness_results(sorted_all_results, args_concurrency, total_time, filename, exp_type, fairness_results):
+    """
+    绘制公平性相关图表
+    """
+    # 创建公平性指标图
+    fig2, axs2 = plt.subplots(3, 1, figsize=(28, 18))   # 公平性指标图，3行1列
+    axs2 = axs2.flatten()
+
+    # 添加标题显示参数
+    fig2.suptitle(
+        f"{exp_type} Fairness Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+        fontsize=16, y=0.98)
+
+    # 获取所有客户端
+    clients = set()
+    for result in sorted_all_results:
+        clients.add(f'{result[0]["client_index"]}_slo_{result[0]["latency_slo"]}')
+
+    # 将clients分为short和long两组
+    short_clients = sorted([c for c in clients if "short" in c])
+    long_clients = sorted([c for c in clients if "long" in c])
+
+    # 暖色系用于short clients
+    warm_colors = ['#FF4D4D', '#FFA64D', '#FFD700', '#FF69B4', '#FF8C69']
+    # 冷色系用于long clients  
+    cool_colors = ['#4169E1', '#00CED1', '#6495ED', '#483D8B', '#008B8B']
+
+    # 创建一个共享图例的句柄和标签列表
+    legend_handles = []
+    legend_labels = []
+
     # 绘制公平性指标
     # 1. Fairness Ratio
     plot_client_metric(axs2[0], sorted_all_results, short_clients, long_clients,
@@ -242,17 +288,9 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
     # 为第三张图添加图例
     axs2[2].legend()
 
-    # 在性能指标图底部添加共享图例
-    fig1.legend(handles=legend_handles, labels=legend_labels,
-               loc='center', bbox_to_anchor=(0.5, 0.02),
-               ncol=len(short_clients) + len(long_clients),
-               fontsize=10)
-
     # 优化布局
-    fig1.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
     fig2.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
     # 调整子图间距，为底部图例留出空间
-    fig1.subplots_adjust(top=0.92, bottom=0.1)
     fig2.subplots_adjust(top=0.92, bottom=0.1)
 
     # 创建figure文件夹（如果不存在）
@@ -260,7 +298,6 @@ def plot_comprehensive_results(sorted_all_results, args_concurrency, total_time,
         os.makedirs('figure')
 
     # 保存图表
-    fig1.savefig(f'figure/performance_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
     fig2.savefig(f'figure/fairness_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
 
     plt.show()
@@ -388,6 +425,165 @@ def plot_client_metric(ax, sorted_all_results, short_clients, long_clients, warm
     setup_subplot_client(ax, title, time_xLabel, ylim=computed_ylim)
 
 
+def plot_aggregated_results(sorted_all_results, args_concurrency, total_time, filename, exp_type):
+    """
+    绘制所有客户端的汇总图表（总和或平均值）
+    """
+    # 创建汇总图表
+    fig, axs = plt.subplots(4, 2, figsize=(28, 25))
+    axs = axs.flatten()
+
+    # 添加标题
+    fig.suptitle(
+        f"{exp_type} Aggregated System Metrics - Concurrency: {args_concurrency}, Total Time: {total_time}, Alpha: {GLOBAL_CONFIG.get('alpha', 0.5)}",
+        fontsize=16, y=0.98)
+
+    if not sorted_all_results:
+        return
+
+    # 获取时间轴（使用第一个客户端的时间）
+    time_data = [result['time'] for result in sorted_all_results[0]]
+    time_xLabel = xLabel_time(time_data)
+    x_values = list(range(len(time_data)))
+
+    # 定义指标和其汇总方式
+    metrics_config = [
+        {
+            'key': 'success_rate',
+            'title': 'Average Success Rate (%)',
+            'method': 'average',
+            'extractor': lambda result: result['successful_requests'] * 100 / result['total_requests'] if result['total_requests'] > 0 else 0
+        },
+        {
+            'key': 'tokens_per_second',
+            'title': 'Total Tokens/s',
+            'method': 'sum',
+            'extractor': lambda result: result['tokens_per_second']['p99']
+        },
+        {
+            'key': 'latency',
+            'title': 'Average Latency (ms)',
+            'method': 'average',
+            'extractor': lambda result: result['latency']['p99']
+        },
+        {
+            'key': 'time_to_first_token',
+            'title': 'Average Time to First Token (ms)',
+            'method': 'average',
+            'extractor': lambda result: result['time_to_first_token']['p99']
+        },
+        {
+            'key': 'requests_per_second',
+            'title': 'Total Requests per Second',
+            'method': 'sum',
+            'extractor': lambda result: result['requests_per_second']
+        },
+        {
+            'key': 'service',
+            'title': 'Total Service Usage',
+            'method': 'sum',
+            'extractor': lambda result: result['total_input_tokens'] + result['total_output_tokens'] * 2
+        },
+        {
+            'key': 'successful_requests',
+            'title': 'Total Successful Requests',
+            'method': 'sum',
+            'extractor': lambda result: result['successful_requests']
+        },
+        {
+            'key': 'slo_violation_count',
+            'title': 'Total SLO Violation Count',
+            'method': 'sum',
+            'extractor': lambda result: result['slo_violation_count']
+        }
+    ]
+
+    # 为每个指标计算汇总值并绘图
+    for idx, metric_config in enumerate(metrics_config):
+        aggregated_values = []
+        
+        # 对每个时间点计算汇总值
+        for time_idx in range(len(time_data)):
+            time_values = []
+            
+            # 收集所有客户端在该时间点的值
+            for client_results in sorted_all_results:
+                if time_idx < len(client_results):
+                    try:
+                        value = metric_config['extractor'](client_results[time_idx])
+                        time_values.append(value)
+                    except (KeyError, ZeroDivisionError, TypeError) as e:
+                        print(f"Warning: Error extracting {metric_config['key']} at time {time_idx}: {e}")
+                        continue
+            
+            # 根据方法计算汇总值
+            if time_values:
+                if metric_config['method'] == 'sum':
+                    aggregated_value = sum(time_values)
+                elif metric_config['method'] == 'average':
+                    aggregated_value = sum(time_values) / len(time_values)
+                else:
+                    aggregated_value = sum(time_values)  # 默认使用总和
+                aggregated_values.append(aggregated_value)
+            else:
+                aggregated_values.append(0)
+
+        # 绘制图表
+        color = colors[idx % len(colors)]
+        marker = markers[idx % len(markers)]
+        linestyle = line_styles[idx % len(line_styles)]
+        
+        axs[idx].plot(x_values, aggregated_values, 
+                     marker=marker, color=color, linestyle=linestyle,
+                     linewidth=2, markersize=6, alpha=0.8)
+        
+        # 添加数值标注（每隔几个点标注一次，避免过于拥挤）
+        annotation_step = max(1, len(aggregated_values) // 8)
+        for i in range(0, len(aggregated_values), annotation_step):
+            axs[idx].annotate(f'{aggregated_values[i]:.1f}',
+                             (x_values[i], aggregated_values[i]),
+                             xytext=(0, 10), textcoords='offset points',
+                             ha='center', va='bottom', fontsize=8,
+                             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+
+        # 设置子图属性
+        axs[idx].set_title(metric_config['title'], fontsize=14, fontweight='bold')
+        axs[idx].set_xlabel('Time', fontsize=12)
+        axs[idx].set_ylabel(metric_config['title'].split()[-1] if len(metric_config['title'].split()) > 1 else 'Value', fontsize=12)
+        axs[idx].grid(True, alpha=0.3)
+        axs[idx].set_xticks(range(0, len(time_xLabel), max(1, len(time_xLabel) // 10)))
+        axs[idx].set_xticklabels([time_xLabel[i] for i in range(0, len(time_xLabel), max(1, len(time_xLabel) // 10))], 
+                                rotation=45, ha='right')
+
+        # 设置y轴范围
+        if aggregated_values:
+            min_val = min(aggregated_values)
+            max_val = max(aggregated_values)
+            margin = (max_val - min_val) * 0.1 if max_val != min_val else 1
+            
+            if metric_config['key'] == 'success_rate':
+                axs[idx].set_ylim(max(0, min_val - 5), 105)
+            elif min_val >= 0:
+                axs[idx].set_ylim(max(0, min_val - margin), max_val + margin)
+            else:
+                axs[idx].set_ylim(min_val - margin, max_val + margin)
+
+        print(f"[DEBUG] {metric_config['key']} aggregated values: {aggregated_values[:5]}...{aggregated_values[-5:] if len(aggregated_values) > 5 else ''}")
+
+    # 优化布局
+    fig.tight_layout(pad=3.0, h_pad=2.0, w_pad=2.0)
+    fig.subplots_adjust(top=0.92, bottom=0.1)
+
+    # 创建figure文件夹（如果不存在）
+    if not os.path.exists('figure'):
+        os.makedirs('figure')
+
+    # 保存图表
+    fig.savefig(f'figure/aggregated_metrics{filename.split(".")[0]}.png', dpi=300, bbox_inches='tight')
+
+    plt.show()
+
+
 def plot_result(plot_data):
     with open("results/" + plot_data["filename"], 'r') as f:
         all_results = json.load(f)
@@ -424,8 +620,11 @@ def plot_result(plot_data):
                                               plot_data["total_time"], plot_data["filename"],
                                               plot_data["exp"])
         plot_comprehensive_results(sorted_all_results, plot_data["concurrency"], plot_data["total_time"],
-                                   plot_data["filename"], plot_data["exp"],
-                                   fairness_results, qps_with_time)
+                                   plot_data["filename"], plot_data["exp"], qps_with_time)
+        plot_fairness_results(sorted_all_results, plot_data["concurrency"], plot_data["total_time"],
+                               plot_data["filename"], plot_data["exp"], fairness_results)
+        plot_aggregated_results(sorted_all_results, plot_data["concurrency"], plot_data["total_time"],
+                               plot_data["filename"], plot_data["exp"])
     else:
         print("No results found")
         return

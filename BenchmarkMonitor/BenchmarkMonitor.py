@@ -90,7 +90,6 @@ class ExperimentMonitor:
         self.fairness_strategies = {
             "LFS": is_fairness_LFSLLM,
             "VTC": is_fairness_VTC,
-            "FCFS": is_fairness_FCFS,
             "QUEUE_LFS": is_fairness_LFSLLM,
             "QUEUE_VTC": is_fairness_VTC,
         }
