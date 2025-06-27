@@ -12,6 +12,7 @@ import time
 import signal
 import psutil
 import pynvml
+from config.Config import GLOBAL_CONFIG
 
 # 导入vLLM相关模块
 try:
@@ -157,7 +158,6 @@ async def start_vllm_engine(args, logger):
     try:
         # 导入配置（仅在需要时导入以避免循环依赖）
         try:
-            from config.Config import GLOBAL_CONFIG
             suppress_logs = GLOBAL_CONFIG.get("suppress_vllm_engine_logs", True)
             log_level = GLOBAL_CONFIG.get("vllm_log_level", "WARNING")
         except ImportError:
