@@ -109,8 +109,11 @@ class ExperimentMonitor:
             # 确保log目录存在
             os.makedirs('log', exist_ok=True)
             
+            # 使用全局配置中的时间戳
+            timestamp = GLOBAL_CONFIG.get("monitor_file_time", "default")
+            
             # 创建文件处理器
-            fh = logging.FileHandler(filename=f'log/monitor_{self.exp_type}.log', encoding="utf-8", mode="w")
+            fh = logging.FileHandler(filename=f'log/monitor_{self.exp_type}_{timestamp}.log', encoding="utf-8", mode="a")
             fh.setLevel(logging.INFO)
             
             # 创建格式化器

@@ -6,6 +6,8 @@
 
 import os
 import logging
+import glob
+from datetime import datetime
 
 
 def setup_logging():
@@ -13,13 +15,17 @@ def setup_logging():
     # 日志文件夹和文件名
     log_dir = "log"
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, "run_benchmarks.log")
+    
+    # 使用全局配置中的时间戳
+    from config.Config import GLOBAL_CONFIG
+    timestamp = GLOBAL_CONFIG.get("monitor_file_time", "default")
+    log_file = os.path.join(log_dir, f"run_benchmarks_{timestamp}.log")
 
     # 设置全局logger
     logger = logging.getLogger("run_benchmarks")
     logger.setLevel(logging.INFO)
     if not logger.handlers:
-        fh = logging.FileHandler(log_file, encoding="utf-8", mode="w")
+        fh = logging.FileHandler(log_file, encoding="utf-8", mode="a")  # 改回追加模式
         fh.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
         fh.setFormatter(formatter)
