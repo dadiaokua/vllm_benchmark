@@ -1,17 +1,21 @@
 # vLLM Benchmark
 
-This repository contains scripts for benchmarking the performance of large language models (LLMs) served using vLLM. It's designed to test the scalability and performance of LLM deployments under various concurrency levels.
+This repository contains scripts for benchmarking the performance of large language models (LLMs) served using vLLM. It's designed to test the scalability and performance of LLM deployments under various concurrency levels and scheduling strategies.
 
 ## Features
 
 - **Automatic vLLM Engine Startup**: Built-in vLLM engine management with configurable parameters
+- **Multi-Experiment Support**: Run multiple scheduling experiments in sequence with a single command
+- **Multiple Scheduling Strategies**: LFS, VTC, FCFS, and Queue-based strategies
+- **Easy Configuration**: Bash script with command-line argument support
 - Benchmark LLMs with different concurrency levels
 - Measure key performance metrics:
   - Requests per second
   - Latency
   - Tokens per second
   - Time to first token
-- Easy to run with customizable parameters
+  - Fairness metrics (Jain's Index)
+- Advanced plotting capabilities with separate views for performance, fairness, and aggregated metrics
 - Generates JSON output for further analysis or visualization
 
 ## Requirements
@@ -21,19 +25,121 @@ This repository contains scripts for benchmarking the performance of large langu
 - `numpy` Python package
 - `vllm` package (for engine startup)
 - `requests` package
+- `matplotlib` (for plotting)
+- `transformers` (for tokenizer)
 
 ## Installation
 
 1. Clone this repository:
-   ```
+   ```bash
    git clone https://github.com/yourusername/vllm-benchmark.git
    cd vllm-benchmark
    ```
 
 2. Install the required packages:
+   ```bash
+   pip install openai numpy vllm requests matplotlib transformers
    ```
-   pip install openai numpy vllm requests
-   ```
+
+## Quick Start
+
+The easiest way to run benchmarks is using the provided bash script:
+
+### Single Experiment
+
+```bash
+# Run LFS experiment
+./start_vllm_benchmark.sh -e LFS
+
+# Run VTC experiment  
+./start_vllm_benchmark.sh -e VTC
+
+# Run queue-based LFS experiment
+./start_vllm_benchmark.sh -e QUEUE_LFS
+```
+
+### Multiple Experiments (Batch Mode)
+
+```bash
+# Compare different scheduling strategies
+./start_vllm_benchmark.sh -e LFS -e VTC -e FCFS
+
+# Test all queue-based strategies
+./start_vllm_benchmark.sh -e QUEUE_LFS -e QUEUE_VTC -e QUEUE_FCFS -e QUEUE_ROUND_ROBIN
+
+# Mixed comparison
+./start_vllm_benchmark.sh -e LFS --exp QUEUE_LFS -e VTC
+```
+
+### Available Experiment Types
+
+| Experiment Type | Description |
+|----------------|-------------|
+| `LFS` | Least Fair Share - Direct scheduling |
+| `VTC` | Virtual Time Credits - Direct scheduling |
+| `FCFS` | First Come First Serve - Direct scheduling |
+| `QUEUE_LFS` | Queue-based LFS scheduling |
+| `QUEUE_VTC` | Queue-based VTC scheduling |
+| `QUEUE_FCFS` | Queue-based FCFS scheduling |
+| `QUEUE_ROUND_ROBIN` | Queue-based Round Robin scheduling |
+| `QUEUE_SJF` | Queue-based Shortest Job First |
+| `QUEUE_FAIR` | Queue-based Fair Share scheduling |
+
+### Getting Help
+
+```bash
+./start_vllm_benchmark.sh -h
+# or
+./start_vllm_benchmark.sh --help
+```
+
+## Configuration
+
+The bash script (`start_vllm_benchmark.sh`) contains pre-configured parameters that you can modify:
+
+### vLLM Engine Parameters
+- Model path and tensor parallel configuration
+- GPU memory utilization and sequence limits
+- Data type and quantization settings
+
+### Client Configuration
+- Short clients: 7 clients with QPS range 50-150
+- Long clients: 3 clients with QPS around 50-80
+- SLO (Service Level Objectives) settings
+
+### Experiment Settings
+- 20 rounds per experiment
+- 300 seconds per round
+- Configurable through script variables
+
+## Advanced Usage
+
+### Manual Python Execution
+
+For more control, you can run the Python script directly:
+
+```bash
+cd run_benchmark
+python3 run_benchmarks.py \
+    --vllm_url "http://localhost:8000/v1" \
+    --api_key "test" \
+    --exp "LFS" \
+    --short_clients 7 \
+    --long_clients 3 \
+    --round 20 \
+    --round_time 300 \
+    # ... other parameters
+```
+
+### Plotting Results
+
+The system automatically generates three types of plots:
+
+1. **Performance Metrics**: Individual client performance over time
+2. **Fairness Metrics**: Fairness ratios, Jain's index, and credits
+3. **Aggregated Metrics**: System-wide performance summaries
+
+Plots are saved in the `figure/` directory with timestamps.
 
 ## vLLM Engine Management
 
@@ -113,68 +219,71 @@ GLOBAL_CONFIG = {
 }
 ```
 
-## Usage
+## Batch Execution Features
 
-### Single Benchmark Run
+### Sequential Execution
+When running multiple experiments:
+- Experiments run sequentially, one after another
+- Each experiment completes fully before the next begins
+- Automatic progress tracking with experiment counters
 
-To run a single benchmark:
-
-```
-python vllm_benchmark.py --num_requests 100 --concurrency 10 --output_tokens 100 --vllm_url "http://localhost:8000/v1" --api_key "your-api-key"
-```
-
-Parameters:
-- `num_requests`: Total number of requests to make
-- `concurrency`: Number of concurrent requests
-- `output_tokens`: Number of tokens to generate per request
-- `vllm_url`: URL of the vLLM server
-- `api_key`: API key for the vLLM server
-- `request_timeout`: (Optional) Timeout for each request in seconds (default: 30)
-
-### Multiple Benchmark Runs with Auto Engine Startup
-
-To run benchmarks with automatic vLLM engine startup:
-
+### Status Reporting
 ```bash
-python run_benchmarks.py \
-  --model_path "/home/llm/model_hub/Qwen2.5-32B-Instruct" \
-  --vllm_url "http://127.0.0.1:8000" \
-  --api_key "test" \
-  --short_qpm "60" \
-  --long_qpm "60" \
-  --short_clients 1 \
-  --long_clients 1 \
-  --short_clients_slo "10" \
-  --long_clients_slo "10" \
-  --round 5 \
-  --round_time 300 \
-  --exp "LFS" \
-  --distribution "poisson" \
-  --local_port 8000 \
-  --remote_port 8000 \
-  --use_tunnel 0
+🚀🚀🚀 开始执行实验 1/3: LFS 🚀🚀🚀
+[Experiment execution...]
+✅ 实验 1/3: LFS 已完成
+
+📋 准备开始下一个实验: 2/3 - VTC
+==========================================
 ```
 
-This will:
-1. Automatically start a vLLM engine with the specified model
-2. Wait for the engine to be ready
-3. Run the benchmark experiments
-4. Automatically stop the engine when finished
+### Final Summary
+```bash
+🎉🎉🎉 所有实验执行完成！🎉🎉🎉
+==========================================
+📊 执行结果总览:
+  总实验数: 3
+  成功实验数: 3
+  失败实验数: 0
 
-## Output
+✅ 成功的实验:
+    - LFS
+    - VTC
+    - FCFS
+```
 
-The benchmark results are saved in JSON format, containing detailed metrics for each run, including:
+## Log Management
 
-- Total requests and successful requests
-- Requests per second
-- Total output tokens
-- Latency (average, p50, p95, p99)
-- Tokens per second (average, p50, p95, p99)
-- Time to first token (average, p50, p95, p99)
+The system generates timestamped log files for each run:
 
-## Results
+```
+log/
+├── client_short_20250101_143022.log    # Short client logs
+├── client_long_20250101_143022.log     # Long client logs
+├── monitor_LFS_20250101_143022.log     # Monitor logs
+└── run_benchmarks_20250101_143022.log  # Main program logs
+```
 
-Please see the results directory for benchmarks on [Backprop](https://backprop.co) instances.
+Each experiment run creates a new set of log files, preserving history while keeping current runs separate.
+
+## Output and Results
+
+### JSON Results
+Results are saved in timestamped JSON files in the `results/` directory:
+- Individual client performance metrics
+- Fairness calculations and Jain's index
+- System-wide aggregated statistics
+
+### Plots
+Three types of plots are automatically generated:
+1. **Performance plots** (`performance_metrics_*.png`)
+2. **Fairness plots** (`fairness_metrics_*.png`)  
+3. **Aggregated plots** (`aggregated_metrics_*.png`)
+
+### Metrics Included
+- **Performance**: Latency, tokens/sec, requests/sec, success rate
+- **Fairness**: Jain's fairness index, client fairness ratios, credit systems
+- **System**: Total throughput, average performance, SLO violations
 
 ## Contributing
 

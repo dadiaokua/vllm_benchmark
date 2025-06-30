@@ -84,6 +84,7 @@ class BenchmarkClient:
         
         # 添加request ID跟踪
         self.active_request_ids = set()  # 跟踪当前活跃的请求ID
+        self.task_status = {}  # 跟踪task状态和对应的request_id
 
         # 设置logger（只设置一次，防止重复handler）
         self.logger = self._setup_logger()
@@ -125,25 +126,26 @@ class BenchmarkClient:
 
     async def _abort_all_engine_requests(self):
         """终止引擎内的所有活跃请求，确保每轮测试之间的干净状态"""
-        if not self.active_request_ids:
+        # 检查是否有直接的vLLM引擎访问
+        if 'vllm_engine' not in GLOBAL_CONFIG or GLOBAL_CONFIG['vllm_engine'] is None:
+            self.logger.debug(f"Client {self.client_id}: 没有vLLM引擎访问，跳过abort")
+            return False
+        
+        # 从task_status中获取未完成的request_id
+        active_request_ids = self._get_active_request_ids_from_tasks()
+        
+        if not active_request_ids:
             self.logger.debug(f"Client {self.client_id}: 没有活跃的请求需要abort")
             return True
         
         try:
-            # 检查是否有直接的vLLM引擎访问
-            if 'vllm_engine' not in GLOBAL_CONFIG or GLOBAL_CONFIG['vllm_engine'] is None:
-                self.logger.debug(f"Client {self.client_id}: 没有vLLM引擎访问，跳过abort")
-                return False
-            
             engine = GLOBAL_CONFIG['vllm_engine']
             
-            # 使用跟踪的request ID进行批量abort
-            aborted_count = await self._abort_tracked_requests(engine)
+            # 使用从task_status获取的request ID进行批量abort
+            aborted_count = await self._abort_tracked_requests(engine, active_request_ids)
             
             if aborted_count > 0:
                 self.logger.info(f"✓ Client {self.client_id}: 已abort {aborted_count} 个请求")
-                # 清空跟踪的请求ID
-                self.active_request_ids.clear()
                 # 给引擎一点时间来处理abort
                 await asyncio.sleep(0.1)
                 return True
@@ -155,13 +157,32 @@ class BenchmarkClient:
             self.logger.error(f"Client {self.client_id}: _abort_all_engine_requests 异常: {e}")
             return False
 
-    async def _abort_tracked_requests(self, engine):
-        """使用跟踪的request ID进行abort"""
+    def _get_active_request_ids_from_tasks(self):
+        """从task_status中获取未完成请求的ID"""
+        active_request_ids = set()
+        
+        # 检查是否有task_status（来自worker_with_queue）
+        if hasattr(self, 'task_status') and self.task_status:
+            for task, status_info in self.task_status.items():
+                # 只获取未完成任务的request_id
+                if (status_info.get("status") != "completed" and 
+                    not task.cancelled() and 
+                    "request_id" in status_info):
+                    active_request_ids.add(status_info["request_id"])
+                    
+            self.logger.debug(f"Client {self.client_id}: 从task_status找到 {len(active_request_ids)} 个未完成请求")
+        
+        # 如果没有task_status，回退到原有的active_request_ids机制（向后兼容）
+        elif self.active_request_ids:
+            active_request_ids = self.active_request_ids.copy()
+            self.logger.debug(f"Client {self.client_id}: 使用传统方式找到 {len(active_request_ids)} 个活跃请求")
+        
+        return active_request_ids
+
+    async def _abort_tracked_requests(self, engine, request_ids_to_abort):
+        """使用提供的request ID列表进行abort"""
         aborted_count = 0
         failed_requests = set()
-        
-        # 创建请求ID的副本，避免在迭代时修改
-        request_ids_to_abort = list(self.active_request_ids)
         
         self.logger.info(f"Client {self.client_id}: 开始abort {len(request_ids_to_abort)} 个跟踪的请求")
         
@@ -181,7 +202,8 @@ class BenchmarkClient:
                 
                 if success:
                     aborted_count += 1
-                    self.unregister_request_id(request_id)
+                    # 从传统的active_request_ids中移除（如果存在）
+                    self.active_request_ids.discard(request_id)
                 else:
                     failed_requests.add(request_id)
                     
@@ -205,12 +227,10 @@ class BenchmarkClient:
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
             result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
 
-            if i != 0:
-                # 等待 monitor 通知处理完成
-                await self.monitor_done_event.wait()
-                self.monitor_done_event.clear()
-                if i == 1:
-                    self.results[-1]["fairness_ratio"] = self.fairness_ratio
+            # 等待 monitor 通知处理完成
+            await self.monitor_done_event.wait()
+            self.monitor_done_event.clear()
+            self.results[-1]["fairness_ratio"] = self.fairness_ratio
 
             # 清理实验资源
             if benchmark_experiment and hasattr(benchmark_experiment, 'cleanup'):
@@ -235,7 +255,6 @@ class BenchmarkClient:
                 self.logger.info(f"Client {self.client_id}: No result for configuration {i + 1}/{self.round}")
             await self.result_queue.put(1)
 
-            self.results[-1]["fairness_ratio"] = self.fairness_ratio
             # Give monitor time to process
             await asyncio.sleep(1)
 

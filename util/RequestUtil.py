@@ -27,7 +27,20 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request_direct_engine(engine, experiment, request, start_time=None):
+async def make_request(client, experiment, request, start_time=None, request_id=None):
+    """
+    发送请求 - 自动检测使用直接引擎还是HTTP客户端
+    """
+    # 检查是否有直接的vLLM引擎
+    if 'vllm_engine' in GLOBAL_CONFIG and GLOBAL_CONFIG['vllm_engine'] is not None:
+        # 使用直接引擎API
+        return await make_request_direct_engine(GLOBAL_CONFIG['vllm_engine'], experiment, request, start_time, request_id)
+    else:
+        # 使用HTTP客户端（原有方式）
+        return await make_request_http_client(client, experiment, request, start_time, request_id)
+
+
+async def make_request_direct_engine(engine, experiment, request, start_time=None, request_id=None):
     """
     直接使用AsyncLLMEngine处理请求
     
@@ -36,6 +49,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         experiment: 实验对象
         request: 请求内容
         start_time: 开始时间
+        request_id: 请求ID（如果提供则使用，否则生成新的）
         
     Returns:
         tuple: (output_tokens, elapsed_time, tokens_per_second, ttft, input_tokens, slo_met)
@@ -43,8 +57,9 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
     if start_time is None:
         start_time = time.time()
 
-    # 生成唯一的请求ID
-    request_id = str(uuid.uuid4())
+    # 如果没有提供request_id，生成一个
+    if request_id is None:
+        request_id = str(uuid.uuid4())
 
     try:
         # 注册请求ID到实验的客户端（如果可用）
@@ -129,28 +144,16 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         return None
 
 
-async def make_request(client, experiment, request, start_time=None):
-    """
-    发送请求 - 自动检测使用直接引擎还是HTTP客户端
-    """
-    # 检查是否有直接的vLLM引擎
-    if 'vllm_engine' in GLOBAL_CONFIG and GLOBAL_CONFIG['vllm_engine'] is not None:
-        # 使用直接引擎API
-        return await make_request_direct_engine(GLOBAL_CONFIG['vllm_engine'], experiment, request, start_time)
-    else:
-        # 使用HTTP客户端（原有方式）
-        return await make_request_http_client(client, experiment, request, start_time)
-
-
-async def make_request_http_client(client, experiment, request, start_time=None):
+async def make_request_http_client(client, experiment, request, start_time=None, request_id=None):
     """
     使用HTTP客户端处理请求（原有方式）
     """
     if start_time is None:
         start_time = time.time()
 
-    # 生成唯一的请求ID
-    request_id = str(uuid.uuid4())
+    # 如果没有提供request_id，生成一个
+    if request_id is None:
+        request_id = str(uuid.uuid4())
 
     try:
         # 注册请求ID到实验的客户端（如果可用）
@@ -205,17 +208,22 @@ async def make_request_http_client(client, experiment, request, start_time=None)
 
 
 async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
-                                 request_content: str, experiment, priority: int = 0) -> Any:
+                                 request_content: str, experiment, priority: int = 0, request_id: str = None) -> Any:
     """通过队列管理器发送请求"""
+    # 如果没有提供request_id，生成一个（向后兼容）
+    if request_id is None:
+        request_id = str(uuid.uuid4())
+        
     try:
         # 提交请求到队列
-        request_id = await queue_manager.submit_request(
+        submitted_request_id = await queue_manager.submit_request(
             client_id=client_id,
             worker_id=worker_id,
             request_content=request_content,
             experiment=experiment,
             priority=priority,
-            start_time=time.time()
+            start_time=time.time(),
+            request_id=request_id  # 传递预生成的request_id
         )
 
         # 等待响应
@@ -416,11 +424,32 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         # 发送请求（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
         selected_client = selected_clients[worker_id % len(selected_clients)]
+        
+        # 生成request_id并在创建task时就集成
+        request_id = str(uuid.uuid4())
+        
         task = asyncio.create_task(
-            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter)
+            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter, request_id)
         )
-        task_status[task] = {"start_time": time.time(), "status": "running"}
-        task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
+        
+        # 在task_status中存储request_id和其他信息
+        task_status[task] = {
+            "request_id": request_id,
+            "start_time": time.time(), 
+            "status": "running"
+        }
+        
+        # 更新done回调以正确更新状态
+        def make_done_callback(task_ref):
+            return lambda t: task_status.update({
+                task_ref: {
+                    **task_status[task_ref],  # 保留原有信息包括request_id
+                    "status": "completed", 
+                    "end_time": time.time()
+                }
+            })
+        
+        task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
 
@@ -432,6 +461,10 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         await asyncio.sleep(remaining_time)
     else:
         experiment.logger.info(f"[{client_id}] reached the end of the round time.")
+
+    # 将task_status存储到experiment中，供abort使用
+    if hasattr(experiment, 'client'):
+        experiment.client.task_status = task_status
 
     # 等待所有任务完成
     if tasks:
@@ -455,7 +488,11 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     return completed, drift_time, request_count
 
 
-async def process_request(client, experiment, request, worker_id, results, semaphore, tokens_counter):
+async def process_request(client, experiment, request, worker_id, results, semaphore, tokens_counter, request_id=None):
+    # 如果没有提供request_id，生成一个（向后兼容）
+    if request_id is None:
+        request_id = str(uuid.uuid4())
+        
     async with semaphore:
         try:
             # 检查当前token总数是否超限
@@ -463,7 +500,7 @@ async def process_request(client, experiment, request, worker_id, results, semap
                 experiment.logger.info(f"Worker {worker_id} reached max tokens limit ({experiment.max_tokens})")
                 return
 
-            result = await make_request(client, experiment, request)
+            result = await make_request(client, experiment, request, request_id=request_id)
             if result:
                 output_tokens = result[0]  # 第一个元素是output_tokens
                 # 原子性地更新token计数
@@ -528,13 +565,33 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         # 设置优先级（短请求优先级更高）
         priority = experiment.client.priority
 
+        # 生成request_id并在创建task时就集成
+        request_id = str(uuid.uuid4())
+        
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request,
                                        worker_id, results, semaphore, tokens_counter,
-                                       priority)
+                                       priority, request_id)
         )
-        task_status[task] = {"start_time": time.time(), "status": "running"}
-        task.add_done_callback(lambda t: task_status.update({t: {"status": "completed", "end_time": time.time()}}))
+        
+        # 在task_status中存储request_id和其他信息
+        task_status[task] = {
+            "request_id": request_id,
+            "start_time": time.time(), 
+            "status": "running"
+        }
+        
+        # 更新done回调以正确更新状态
+        def make_done_callback(task_ref):
+            return lambda t: task_status.update({
+                task_ref: {
+                    **task_status[task_ref],  # 保留原有信息包括request_id
+                    "status": "completed", 
+                    "end_time": time.time()
+                }
+            })
+        
+        task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
 
@@ -546,6 +603,10 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         await asyncio.sleep(remaining_time)
     else:
         experiment.logger.info(f"[{client_id}] reached the end of the round time.")
+
+    # 将task_status存储到experiment中，供abort使用
+    if hasattr(experiment, 'client'):
+        experiment.client.task_status = task_status
 
     # 等待所有任务完成
     if tasks:
@@ -570,8 +631,12 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
 
 async def process_request_with_queue(queue_manager, client_id, experiment, request, worker_id, results, semaphore,
-                                     tokens_counter, priority=0):
+                                     tokens_counter, priority=0, request_id=None):
     """使用队列管理器处理请求"""
+    # 如果没有提供request_id，生成一个（向后兼容）
+    if request_id is None:
+        request_id = str(uuid.uuid4())
+    
     async with semaphore:
         try:
             # 检查当前token总数是否超限
@@ -581,7 +646,7 @@ async def process_request_with_queue(queue_manager, client_id, experiment, reque
 
             result = await make_request_via_queue(
                 queue_manager, client_id, f"worker_{worker_id}",
-                request, experiment, priority
+                request, experiment, priority, request_id
             )
 
             if result:
