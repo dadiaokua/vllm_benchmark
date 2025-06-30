@@ -93,9 +93,9 @@ REMOTE_PORT="10085"
 
 # ========== 请求配置参数 ==========
 DISTRIBUTION="normal"
-SHORT_QPM="50 50 60 60 80 100 150"
+SHORT_QPM="20 20 30 30 50 80 100"
 SHORT_CLIENT_QPM_RATIO=1
-LONG_QPM="50 50 80"
+LONG_QPM="30 30 50"
 LONG_CLIENT_QPM_RATIO=1
 
 # ========== 客户端配置参数 ==========
