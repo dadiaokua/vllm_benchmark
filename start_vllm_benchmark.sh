@@ -219,7 +219,7 @@ run_benchmark() {
         --remote_port "$REMOTE_PORT" \
         --distribution "$DISTRIBUTION" \
         --short_qpm "$SHORT_QPM" \
-        --short_client_qmp_ratio "$SHORT_CLIENT_QPM_RATIO" \
+        --short_client_qpm_ratio "$SHORT_CLIENT_QPM_RATIO" \
         --long_qpm "$LONG_QPM" \
         --long_client_qpm_ratio "$LONG_CLIENT_QPM_RATIO" \
         --short_clients "$SHORT_CLIENTS" \
@@ -284,6 +284,8 @@ for i in "${!EXP_NAMES[@]}"; do
     if [ $exp_index -lt $total_experiments ]; then
         next_exp="${EXP_NAMES[i+1]}"
         echo ""
+        echo "⏱️ 等待 300 秒后开始下一个实验..."
+        sleep 300
         echo "📋 准备开始下一个实验: $((exp_index+1))/$total_experiments - $next_exp"
         echo "=========================================="
     fi
