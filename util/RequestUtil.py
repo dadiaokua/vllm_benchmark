@@ -34,7 +34,8 @@ async def make_request(client, experiment, request, start_time=None, request_id=
     # 检查是否有直接的vLLM引擎
     if 'vllm_engine' in GLOBAL_CONFIG and GLOBAL_CONFIG['vllm_engine'] is not None:
         # 使用直接引擎API
-        return await make_request_direct_engine(GLOBAL_CONFIG['vllm_engine'], experiment, request, start_time, request_id)
+        return await make_request_direct_engine(GLOBAL_CONFIG['vllm_engine'], experiment, request, start_time,
+                                                request_id)
     else:
         # 使用HTTP客户端（原有方式）
         return await make_request_http_client(client, experiment, request, start_time, request_id)
@@ -65,13 +66,13 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         # 注册请求ID到实验的客户端（如果可用）
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
             experiment.client.register_request_id(request_id)
-        
+
         # 从配置中获取采样参数
         temperature = GLOBAL_CONFIG.get('sampling_temperature', 0.7)
         top_p = GLOBAL_CONFIG.get('sampling_top_p', 0.9)
         top_k = GLOBAL_CONFIG.get('sampling_top_k', -1)
         repetition_penalty = GLOBAL_CONFIG.get('sampling_repetition_penalty', 1.0)
-        
+
         # 创建采样参数
         sampling_params_dict = {
             "max_tokens": experiment.output_tokens,
@@ -79,26 +80,27 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
             "top_p": top_p,
             "repetition_penalty": repetition_penalty,
         }
-        
+
         # 只有当top_k > 0时才添加top_k参数
         if top_k > 0:
             sampling_params_dict["top_k"] = top_k
-            
+
         sampling_params = SamplingParams(**sampling_params_dict)
-        
+
         # 生成请求
         results = []
         first_token_time = None
-        
+
         # 使用AsyncLLMEngine生成
         async for request_output in engine.generate(request, sampling_params, request_id, priority=experiment.priority):
-            if first_token_time is None and len(request_output.outputs) > 0 and len(request_output.outputs[0].token_ids) > 0:
+            if first_token_time is None and len(request_output.outputs) > 0 and len(
+                    request_output.outputs[0].token_ids) > 0:
                 first_token_time = time.time()
             results.append(request_output)
-        
+
         end_time = time.time()
         elapsed_time = end_time - start_time
-        
+
         # 获取最终结果
         if results:
             final_output = results[-1]
@@ -109,7 +111,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
                 output_tokens = 0
         else:
             output_tokens = 0
-            
+
         ttft = first_token_time - start_time if first_token_time else None
         input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
@@ -139,7 +141,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         # 异常时也要注销请求ID
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
             experiment.client.unregister_request_id(request_id)
-        
+
         experiment.logger.error(f"Error during direct engine request: {str(e)}")
         return None
 
@@ -159,7 +161,7 @@ async def make_request_http_client(client, experiment, request, start_time=None,
         # 注册请求ID到实验的客户端（如果可用）
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
             experiment.client.register_request_id(request_id)
-        
+
         # 使用log_request=False参数来禁止在日志中打印请求内容
         stream = await client.chat.completions.create(
             model=GLOBAL_CONFIG['request_model_name'],
@@ -202,7 +204,7 @@ async def make_request_http_client(client, experiment, request, start_time=None,
         # 异常时也要注销请求ID
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
             experiment.client.unregister_request_id(request_id)
-        
+
         experiment.logger.error(f"Error during request: {str(e)}")
         return None
 
@@ -213,7 +215,7 @@ async def make_request_via_queue(queue_manager, client_id: str, worker_id: str,
     # 如果没有提供request_id，生成一个（向后兼容）
     if request_id is None:
         request_id = str(uuid.uuid4())
-        
+
     try:
         # 提交请求到队列
         submitted_request_id = await queue_manager.submit_request(
@@ -424,31 +426,32 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         # 发送请求（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
         selected_client = selected_clients[worker_id % len(selected_clients)]
-        
+
         # 生成request_id并在创建task时就集成
         request_id = str(uuid.uuid4())
-        
+
         task = asyncio.create_task(
-            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter, request_id)
+            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter,
+                            request_id)
         )
-        
+
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(), 
+            "start_time": time.time(),
             "status": "running"
         }
-        
+
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             return lambda t: task_status.update({
                 task_ref: {
                     **task_status[task_ref],  # 保留原有信息包括request_id
-                    "status": "completed", 
+                    "status": "completed",
                     "end_time": time.time()
                 }
             })
-        
+
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -456,8 +459,9 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     elapsed = time.time() - global_start_time
     remaining_time = experiment.round_time - elapsed
     if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:
-        experiment.logger.warning(
-            f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
+        if remaining_time > (experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 2):
+            experiment.logger.warning(
+                f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
     else:
         experiment.logger.info(f"[{client_id}] reached the end of the round time.")
@@ -492,7 +496,7 @@ async def process_request(client, experiment, request, worker_id, results, semap
     # 如果没有提供request_id，生成一个（向后兼容）
     if request_id is None:
         request_id = str(uuid.uuid4())
-        
+
     async with semaphore:
         try:
             # 检查当前token总数是否超限
@@ -567,30 +571,30 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
         # 生成request_id并在创建task时就集成
         request_id = str(uuid.uuid4())
-        
+
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request,
                                        worker_id, results, semaphore, tokens_counter,
                                        priority, request_id)
         )
-        
+
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(), 
+            "start_time": time.time(),
             "status": "running"
         }
-        
+
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             return lambda t: task_status.update({
                 task_ref: {
                     **task_status[task_ref],  # 保留原有信息包括request_id
-                    "status": "completed", 
+                    "status": "completed",
                     "end_time": time.time()
                 }
             })
-        
+
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -598,8 +602,6 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
     elapsed = time.time() - global_start_time
     remaining_time = experiment.round_time - elapsed
     if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:  # 只在剩余时间大于3秒时才sleep，防止误差
-        experiment.logger.warning(
-            f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
     else:
         experiment.logger.info(f"[{client_id}] reached the end of the round time.")
@@ -636,7 +638,7 @@ async def process_request_with_queue(queue_manager, client_id, experiment, reque
     # 如果没有提供request_id，生成一个（向后兼容）
     if request_id is None:
         request_id = str(uuid.uuid4())
-    
+
     async with semaphore:
         try:
             # 检查当前token总数是否超限
