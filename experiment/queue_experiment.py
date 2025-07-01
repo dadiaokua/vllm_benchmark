@@ -131,7 +131,7 @@ class QueueExperiment(BaseExperiment):
             f"Benchmark ended at {datetime.fromtimestamp(self.end_time).strftime('%Y-%m-%d %H:%M:%S')}, total time: {self.end_time - self.start_time:.2f}s")
 
         # 打印队列统计信息
-        self.queue_manager.print_statistics()
+        # self.queue_manager.print_statistics()
 
         # 计算指标
         return await self.calculate_results(sum(completed_requests), sum(total_requests))
