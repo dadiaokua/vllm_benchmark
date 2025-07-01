@@ -134,6 +134,12 @@ class BenchmarkClient:
         # 从task_status中获取未完成的request_id
         active_request_ids = self._get_active_request_ids_from_tasks()
         
+        # 如果有队列管理器，也从队列中获取活跃的request_id
+        if self.queue_manager:
+            queue_request_ids = self.queue_manager.get_active_request_ids(self.client_id)
+            active_request_ids.update(queue_request_ids)
+            self.logger.debug(f"Client {self.client_id}: 从队列管理器找到 {len(queue_request_ids)} 个队列中的请求")
+        
         if not active_request_ids:
             self.logger.debug(f"Client {self.client_id}: 没有活跃的请求需要abort")
             return True
@@ -141,11 +147,20 @@ class BenchmarkClient:
         try:
             engine = GLOBAL_CONFIG['vllm_engine']
             
-            # 使用从task_status获取的request ID进行批量abort
-            aborted_count = await self._abort_tracked_requests(engine, active_request_ids)
+            # 如果有队列管理器，先从队列中abort请求
+            queue_aborted_count = 0
+            if self.queue_manager:
+                queue_request_ids = [rid for rid in active_request_ids if rid.startswith("request_")]
+                if queue_request_ids:
+                    queue_aborted_count = await self.queue_manager.abort_requests(queue_request_ids)
+                    self.logger.debug(f"Client {self.client_id}: 从队列中abort了 {queue_aborted_count} 个请求")
             
-            if aborted_count > 0:
-                self.logger.info(f"✓ Client {self.client_id}: 已abort {aborted_count} 个请求")
+            # 使用从task_status获取的request ID进行引擎abort
+            engine_aborted_count = await self._abort_tracked_requests(engine, active_request_ids)
+            
+            total_aborted = queue_aborted_count + engine_aborted_count
+            if total_aborted > 0:
+                self.logger.info(f"✓ Client {self.client_id}: 已abort {total_aborted} 个请求 (队列: {queue_aborted_count}, 引擎: {engine_aborted_count})")
                 # 给引擎一点时间来处理abort
                 await asyncio.sleep(0.1)
                 return True

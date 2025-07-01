@@ -29,10 +29,14 @@ class  QueuedRequest:
     priority: int = 0
     submit_time: float = 0
     client_type: str = "unknown"  # short or long
+    request_id: str = ""  # 添加request_id字段
     
     def __post_init__(self):
         if self.submit_time == 0:
             self.submit_time = time.time()
+        # 如果没有request_id，生成一个
+        if not self.request_id:
+            self.request_id = f"request_{self.client_id}_{self.worker_id}_{int(time.time() * 1000)}"
     
     def __lt__(self, other):
         """用于优先队列排序"""
@@ -119,10 +123,14 @@ class RequestQueueManager:
         self.logger.info(f"Registered client: {client_id} (type: {client_type})")
     
     async def submit_request(self, start_time: float, client_id: str, worker_id: str, request_content: str, 
-                           experiment: Any, priority: int = 0) -> str:
+                           experiment: Any, priority: int = 0, request_id: str = None) -> str:
         """提交请求到队列"""
         if client_id not in self.response_queues:
             await self.register_client(client_id)
+        
+        # 如果没有提供request_id，生成一个
+        if request_id is None:
+            request_id = f"request_{client_id}_{worker_id}_{int(time.time() * 1000)}"
         
         request = QueuedRequest(
             start_time=start_time,
@@ -131,7 +139,8 @@ class RequestQueueManager:
             request_content=request_content,
             experiment=experiment,
             priority=priority,
-            client_type=self.client_stats[client_id]['client_type']
+            client_type=self.client_stats[client_id]['client_type'],
+            request_id=request_id  # 传递request_id
         )
         
         # 更新客户端统计
@@ -159,13 +168,13 @@ class RequestQueueManager:
                     self.priority_queue_list.append(request)
                     insert_pos = len(self.priority_queue_list) - 1
                 
-                self.logger.debug(f"Added request to priority queue: {client_id} (priority: {priority}, inserted at position: {insert_pos}/{len(self.priority_queue_list)})")
+                self.logger.debug(f"Added request to priority queue: {client_id} (request_id: {request_id}, priority: {priority}, inserted at position: {insert_pos}/{len(self.priority_queue_list)})")
             else:
                 # 其他策略使用普通队列
                 await self.request_queue.put(request)
-                self.logger.debug(f"Submitted request from {client_id} to queue")
+                self.logger.debug(f"Submitted request from {client_id} to queue (request_id: {request_id})")
             
-            return f"request_{client_id}_{worker_id}_{int(time.time() * 1000)}"
+            return request_id  # 返回传入的或生成的request_id
         except asyncio.QueueFull:
             self.logger.error(f"Queue is full, rejecting request from {client_id}")
             self.client_stats[client_id]['failed_requests'] += 1
@@ -297,20 +306,23 @@ class RequestQueueManager:
         self.client_stats[request.client_id]['total_wait_time'] += wait_time
         
         try:
-            # 调用原有的make_request函数
+            # 调用原有的make_request函数，传递request_id
             result = await make_request(
                 client=selected_client,
                 experiment=request.experiment,
                 request=request.request_content,
-                start_time=request.start_time
+                start_time=request.start_time,
+                request_id=request.request_id  # 传递request_id
             )
             
             if result is None:
                 self.client_stats[request.client_id]['failed_requests'] += 1
+                self.logger.debug(f"Request failed: {request.request_id}")
                 return None
                 
             self.client_stats[request.client_id]['completed_requests'] += 1
             self.total_requests_processed += 1
+            self.logger.debug(f"Request completed: {request.request_id}")
             
             try:
                 # 从result中提取token信息并更新统计
@@ -323,11 +335,11 @@ class RequestQueueManager:
                     self.client_token_stats[request.client_id]['total_input_tokens'] += input_token_count
                     self.client_token_stats[request.client_id]['actual_tokens_used'] += (output_tokens + input_token_count)
             except (ValueError, TypeError, IndexError) as e:
-                self.logger.error(f"Error processing result data: {str(e)}, result: {result}")
+                self.logger.error(f"Error processing result data for {request.request_id}: {str(e)}, result: {result}")
             
             return result
         except Exception as e:
-            self.logger.error(f"Error processing request from {request.client_id}: {str(e)}")
+            self.logger.error(f"Error processing request {request.request_id} from {request.client_id}: {str(e)}")
             self.client_stats[request.client_id]['failed_requests'] += 1
             return None
     
@@ -464,4 +476,91 @@ class RequestQueueManager:
                 'actual_tokens_used': 0
             }
         
-        self.logger.info("Queue manager cleanup completed") 
+        self.logger.info("Queue manager cleanup completed")
+
+    def get_active_request_ids(self, client_id: str = None) -> List[str]:
+        """获取活跃的request_id列表
+        
+        Args:
+            client_id: 如果指定，只返回该客户端的request_id；否则返回所有
+            
+        Returns:
+            活跃的request_id列表
+        """
+        active_request_ids = []
+        
+        # 检查普通队列
+        temp_queue = []
+        try:
+            while not self.request_queue.empty():
+                request = self.request_queue.get_nowait()
+                if client_id is None or request.client_id == client_id:
+                    active_request_ids.append(request.request_id)
+                temp_queue.append(request)
+        except asyncio.QueueEmpty:
+            pass
+        
+        # 将请求放回队列
+        for request in temp_queue:
+            try:
+                self.request_queue.put_nowait(request)
+            except asyncio.QueueFull:
+                self.logger.warning(f"Queue full when restoring request {request.request_id}")
+        
+        # 检查优先级队列
+        for request in self.priority_queue_list:
+            if client_id is None or request.client_id == client_id:
+                active_request_ids.append(request.request_id)
+        
+        return active_request_ids
+    
+    async def abort_requests(self, request_ids: List[str]) -> int:
+        """终止指定的请求
+        
+        Args:
+            request_ids: 要终止的request_id列表
+            
+        Returns:
+            成功终止的请求数量
+        """
+        if not request_ids:
+            return 0
+        
+        aborted_count = 0
+        request_ids_set = set(request_ids)
+        
+        # 从普通队列中移除
+        temp_queue = []
+        try:
+            while not self.request_queue.empty():
+                request = self.request_queue.get_nowait()
+                if request.request_id not in request_ids_set:
+                    temp_queue.append(request)
+                else:
+                    aborted_count += 1
+                    self.logger.debug(f"Aborted request from queue: {request.request_id}")
+        except asyncio.QueueEmpty:
+            pass
+        
+        # 将未终止的请求放回队列
+        for request in temp_queue:
+            try:
+                await self.request_queue.put(request)
+            except asyncio.QueueFull:
+                self.logger.warning(f"Queue full when restoring request {request.request_id}")
+        
+        # 从优先级队列中移除
+        original_priority_queue = self.priority_queue_list.copy()
+        self.priority_queue_list = []
+        
+        for request in original_priority_queue:
+            if request.request_id not in request_ids_set:
+                self.priority_queue_list.append(request)
+            else:
+                aborted_count += 1
+                self.logger.debug(f"Aborted request from priority queue: {request.request_id}")
+        
+        if aborted_count > 0:
+            self.logger.info(f"Successfully aborted {aborted_count} requests from queue")
+        
+        return aborted_count 
