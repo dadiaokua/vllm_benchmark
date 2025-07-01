@@ -242,12 +242,20 @@ class BenchmarkClient:
             print(f"Client {self.client_id}: Running configuration {i + 1}/{self.round}: {self.qpm}")
             result, benchmark_experiment = await self.run_benchmark(GLOBAL_CONFIG["output_tokens"], self.qpm, i, self.latency_slo)
 
-            if i !=0:
-            # 等待 monitor 通知处理完成
+            # Store result first
+            if result:
+                self.results.append(result)
+            else:
+                self.logger.info(f"Client {self.client_id}: No result for configuration {i + 1}/{self.round}")
+
+            if i != 0:
+                # 等待 monitor 通知处理完成
                 await self.monitor_done_event.wait()
                 self.monitor_done_event.clear()
 
-            self.results[-1]["fairness_ratio"] = self.fairness_ratio
+            # 现在可以安全地访问self.results[-1]，因为result已经被添加
+            if self.results:  # 额外的安全检查
+                self.results[-1]["fairness_ratio"] = self.fairness_ratio
 
             # 清理实验资源
             if benchmark_experiment and hasattr(benchmark_experiment, 'cleanup'):
@@ -265,11 +273,6 @@ class BenchmarkClient:
             # 每次benchmark结束后，终止引擎内的所有活跃请求
             await self._abort_all_engine_requests()
             
-            # Store and update results
-            if result:
-                self.results.append(result)
-            else:
-                self.logger.info(f"Client {self.client_id}: No result for configuration {i + 1}/{self.round}")
             await self.result_queue.put(1)
 
             # Give monitor time to process
