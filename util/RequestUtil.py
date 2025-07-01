@@ -262,8 +262,8 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 实际可用的发送时间窗口
     effective_round_time = round_time - buffer_time
 
-    experiment.logger.info(
-        f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
+    # experiment.logger.info(
+    #     f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
 
     # 将每分钟请求数转换为每秒请求数
     rate_per_second = rate_lambda / 60.0
