@@ -134,12 +134,12 @@ class BenchmarkClient:
         # 从task_status中获取未完成的request_id
         active_request_ids = self._get_active_request_ids_from_tasks()
         
-        # 如果有队列管理器，也从队列中获取活跃的request_id
-        if self.queue_manager:
-            queue_request_ids = self.queue_manager.get_active_request_ids(self.client_id)
-            active_request_ids.update(queue_request_ids)
-            self.logger.debug(f"Client {self.client_id}: 从队列管理器找到 {len(queue_request_ids)} 个队列中的请求")
-        
+        # # 如果有队列管理器，也从队列中获取活跃的request_id
+        # if self.queue_manager:
+        #     queue_request_ids = self.queue_manager.get_active_request_ids(self.client_id)
+        #     active_request_ids.update(queue_request_ids)
+        #     self.logger.debug(f"Client {self.client_id}: 从队列管理器找到 {len(queue_request_ids)} 个队列中的请求")
+
         if not active_request_ids:
             self.logger.debug(f"Client {self.client_id}: 没有活跃的请求需要abort")
             return True
@@ -270,7 +270,7 @@ class BenchmarkClient:
             else:
                 self.logger.debug(f"Client {self.client_id}: 实验对象无cleanup方法，跳过清理")
 
-            # 每次benchmark结束后，终止引擎内的所有活跃请求
+            # # 每次benchmark结束后，终止引擎内的所有活跃请求
             await self._abort_all_engine_requests()
             
             await self.result_queue.put(1)
