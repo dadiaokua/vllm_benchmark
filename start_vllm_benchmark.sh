@@ -111,8 +111,8 @@ REQUEST_TIMEOUT=30
 SLEEP_TIME=1
 
 # ========== 实验配置参数 ==========
-ROUND_NUM=3
-ROUND_TIME=300
+ROUND_NUM=5
+ROUND_TIME=60
 USE_TIME_DATA=0
 
 # ========== 模型和tokenizer参数 ==========
