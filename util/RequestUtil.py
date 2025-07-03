@@ -79,16 +79,31 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
             max_tokens=experiment.output_tokens
         )
 
-        # 发送请求到引擎
-        request_output = await engine.generate(request, sampling_params, request_id)
+        # 发送请求到引擎 - 注意这里返回的是异步生成器
+        request_generator = engine.generate(request, sampling_params, request_id)
+        
+        # 使用async for迭代异步生成器获取最终结果
+        request_output = None
+        first_chunk_time = None
+        
+        async for output_chunk in request_generator:
+            if first_chunk_time is None:
+                first_chunk_time = time.time()
+            request_output = output_chunk  # 保留最后一个输出作为最终结果
+        
         end_time = time.time()
         
         # 计算首个token时间 (TTFT)
         ttft_ms = None
-        if hasattr(request_output, 'metrics') and request_output.metrics:
-            ttft_ms = getattr(request_output.metrics, 'first_token_time', None)
-            if ttft_ms is None:
-                ttft_ms = getattr(request_output.metrics, 'time_to_first_token_ms', None)
+        if first_chunk_time:
+            ttft_ms = (first_chunk_time - start_time) * 1000  # 转换为毫秒
+        
+        # 如果没有获取到任何输出，返回None
+        if request_output is None:
+            experiment.logger.warning(f"Client {client_id}: 请求 {request_id} 没有返回任何输出")
+            if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
+                experiment.client.unregister_request_id(request_id)
+            return None
 
         # 获取输出内容
         output_text = ""
