@@ -275,9 +275,6 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 实际可用的发送时间窗口
     effective_round_time = round_time - buffer_time
 
-    # experiment.logger.info(
-    #     f"Round time: {round_time}s, Buffer time: {buffer_time}s, Effective time: {effective_round_time}s")
-
     # 将每分钟请求数转换为每秒请求数
     rate_per_second = rate_lambda / 60.0
 
@@ -287,43 +284,53 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 基础时间间隔
     base_interval = 1 / rate_per_second
 
-    # 估算总请求数，基于有效时间窗口
-    estimated_requests = int(effective_round_time * rate_per_second)
-    # 在估算请求数基础上增加10%的随机变化
-    random_variation = random.uniform(0.9, 1.1)
-    estimated_requests = int(estimated_requests * random_variation)
+    # 估算总请求数，基于完整的round_time，而不是effective_round_time
+    # 这样即使有buffer time，我们仍然会发送完整的请求数量
+    estimated_requests = int(round_time * rate_per_second)
+    
+    # 移除随机变化
+    # random_variation = random.uniform(0.9, 1.1)
+    # estimated_requests = int(estimated_requests * random_variation)
 
     # 生成所有请求的时间点
     request_times = []
     global_start_time = time.time()  # 使用当前时间作为全局开始时间
 
-    # 添加一个随机的开始偏移，避免所有client同时开始
-    start_offset = random.uniform(0, min(5.0, effective_round_time * 0.1))  # 最多5秒或effective_round_time的10%
+    # 移除随机开始偏移
+    # start_offset = random.uniform(0, min(5.0, effective_round_time * 0.1))
+    start_offset = 0  # 从0开始，没有随机偏移
 
     # 先生成基础时间点（相对于开始时间的偏移）
     base_times = []
-    current_offset = start_offset  # 从随机偏移开始
+    current_offset = start_offset  # 从偏移开始
+
+    # 计算时间压缩比例，将round_time的请求压缩到effective_round_time内
+    compression_ratio = effective_round_time / round_time if round_time > 0 else 1.0
 
     for i in range(estimated_requests):
-        # 增加分布的随机性
+        # 根据分布类型计算间隔，但移除额外的随机性
         if distribution.lower() == "poisson":
-            # 泊松分布，但添加更多随机性
-            base_rate_variation = random.uniform(0.7, 1.3)  # 基础速率的变化
-            adjusted_interval = base_interval * base_rate_variation
-            interval = float(np.random.exponential(adjusted_interval))
+            # 泊松分布
+            # base_rate_variation = random.uniform(0.7, 1.3)
+            # adjusted_interval = base_interval * base_rate_variation
+            interval = float(np.random.exponential(base_interval))
         elif distribution.lower() == "normal":
-            # 正态分布，增加标准差
-            std_dev = base_interval * random.uniform(0.2, 0.4)  # 随机标准差
+            # 正态分布，使用固定标准差
+            std_dev = base_interval * 0.3  # 固定标准差为间隔的30%
             interval = base_interval + float(np.random.normal(0, std_dev))
             interval = max(0.001, interval)  # 确保间隔为正
         else:
-            # 均匀分布，增加变化范围
-            variation_range = random.uniform(0.3, 0.7)  # 随机变化范围
-            interval = base_interval + float(np.random.uniform(-base_interval * variation_range,
-                                                               base_interval * variation_range))
-            interval = max(0.001, interval)  # 确保间隔为正
+            # 均匀分布，不添加额外变化
+            # variation_range = random.uniform(0.3, 0.7)
+            # interval = base_interval + float(np.random.uniform(-base_interval * variation_range,
+            #                                                   base_interval * variation_range))
+            interval = base_interval  # 使用固定间隔
+            # interval = max(0.001, interval)
 
-        current_offset += interval
+        # 应用压缩比例，将请求间隔压缩
+        compressed_interval = interval * compression_ratio
+        
+        current_offset += compressed_interval
         if current_offset > effective_round_time:  # 确保不超出有效时间窗口
             break
         base_times.append(current_offset)
@@ -333,6 +340,9 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     for base_time in base_times:
         request_time = global_start_time + base_time
         request_times.append(request_time)
+
+    # 记录生成的请求数量
+    experiment.logger.info(f"Generated {len(request_times)} requests for QPM {qmp_per_worker} in {effective_round_time:.1f}s effective window (buffer: {buffer_time:.1f}s)")
 
     return request_times
 
