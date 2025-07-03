@@ -330,9 +330,9 @@ def calculate_all_request_times(experiment, qmp_per_worker):
 
         # shuffled_all_request_times(base_times, start_offset, effective_round_time, time_ratio, global_start_time, experiment, buffer_time)
 
-        for base_time in base_times:
-            request_time = global_start_time + base_time
-            request_times.append(request_time)
+    for base_time in base_times:
+        request_time = global_start_time + base_time
+        request_times.append(request_time)
 
     return request_times
 

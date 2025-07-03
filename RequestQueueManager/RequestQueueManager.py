@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 from util.RequestUtil import make_request
+import os
 
 
 class QueueStrategy(Enum):
@@ -76,11 +77,32 @@ class RequestQueueManager:
         logger = logging.getLogger("RequestQueueManager")
         if not logger.handlers:
             logger.setLevel(logging.INFO)
+            
+            # 确保log目录存在
+            os.makedirs('log', exist_ok=True)
+            
+            # 使用全局配置中的时间戳
+            from config.Config import GLOBAL_CONFIG
+            timestamp = GLOBAL_CONFIG.get("monitor_file_time", "default")
+            
+            # 创建文件处理器
+            fh = logging.FileHandler(filename=f'log/request_queue_manager_{timestamp}.log', encoding="utf-8", mode="a")
+            fh.setLevel(logging.INFO)
+            
+            # 创建控制台处理器
             ch = logging.StreamHandler()
             ch.setLevel(logging.INFO)
+            
+            # 创建格式化器
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             ch.setFormatter(formatter)
+            fh.setFormatter(formatter)
+            
+            # 添加处理器到日志记录器
             logger.addHandler(ch)
+            logger.addHandler(fh)
+            
+            # 确保日志不会被父级处理器处理
             logger.propagate = False
         return logger
     
