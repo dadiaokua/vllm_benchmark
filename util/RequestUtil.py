@@ -58,70 +58,68 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
     if start_time is None:
         start_time = time.time()
 
-    # 如果没有提供request_id，生成一个
+    # 如果没有提供request_id，生成一个带客户端前缀的唯一ID
     if request_id is None:
-        request_id = str(uuid.uuid4())
+        client_id = getattr(experiment.client, 'client_id', 'unknown_client')
+        request_id = f"{client_id}_{str(uuid.uuid4())}"
 
     try:
         # 注册请求ID到实验的客户端（如果可用）
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
             experiment.client.register_request_id(request_id)
+        
+        # 添加调试日志
+        client_id = getattr(experiment.client, 'client_id', 'unknown_client')
+        experiment.logger.debug(f"Client {client_id}: 开始处理请求 {request_id}")
 
-        # 从配置中获取采样参数
-        temperature = GLOBAL_CONFIG.get('sampling_temperature', 0.7)
-        top_p = GLOBAL_CONFIG.get('sampling_top_p', 0.9)
-        top_k = GLOBAL_CONFIG.get('sampling_top_k', -1)
-        repetition_penalty = GLOBAL_CONFIG.get('sampling_repetition_penalty', 1.0)
+        # 准备请求参数
+        sampling_params = SamplingParams(
+            temperature=0.8,
+            top_p=0.95,
+            max_tokens=experiment.output_tokens
+        )
 
-        # 创建采样参数
-        sampling_params_dict = {
-            "max_tokens": experiment.output_tokens,
-            "temperature": temperature,
-            "top_p": top_p,
-            "repetition_penalty": repetition_penalty,
-        }
-
-        # 只有当top_k > 0时才添加top_k参数
-        if top_k > 0:
-            sampling_params_dict["top_k"] = top_k
-
-        sampling_params = SamplingParams(**sampling_params_dict)
-
-        # 生成请求
-        results = []
-        first_token_time = None
-
-        # 使用AsyncLLMEngine生成
-        async for request_output in engine.generate(request, sampling_params, request_id, priority=experiment.priority):
-            if first_token_time is None and len(request_output.outputs) > 0 and len(
-                    request_output.outputs[0].token_ids) > 0:
-                first_token_time = time.time()
-            results.append(request_output)
-
+        # 发送请求到引擎
+        request_output = await engine.generate(request, sampling_params, request_id)
         end_time = time.time()
+        
+        # 计算首个token时间 (TTFT)
+        ttft_ms = None
+        if hasattr(request_output, 'metrics') and request_output.metrics:
+            ttft_ms = getattr(request_output.metrics, 'first_token_time', None)
+            if ttft_ms is None:
+                ttft_ms = getattr(request_output.metrics, 'time_to_first_token_ms', None)
+
+        # 获取输出内容
+        output_text = ""
+        input_tokens = 0
+        output_tokens = 0
+        
+        if hasattr(request_output, 'outputs') and request_output.outputs:
+            output = request_output.outputs[0]
+            output_text = output.text
+            output_tokens = len(output.token_ids) if hasattr(output, 'token_ids') else 0
+            
+        # 获取输入token数（如果可用）
+        if hasattr(request_output, 'prompt_token_ids'):
+            input_tokens = len(request_output.prompt_token_ids)
+        elif hasattr(request_output, 'inputs') and hasattr(request_output.inputs, 'token_ids'):
+            input_tokens = len(request_output.inputs.token_ids)
+
         elapsed_time = end_time - start_time
-
-        # 获取最终结果
-        if results:
-            final_output = results[-1]
-            if final_output.outputs:
-                output_text = final_output.outputs[0].text
-                output_tokens = len(final_output.outputs[0].token_ids)
-            else:
-                output_tokens = 0
-        else:
-            output_tokens = 0
-
-        ttft = first_token_time - start_time if first_token_time else None
-        input_token = experiment.tokenizer(request, truncation=False, return_tensors="pt").input_ids[0]
         tokens_per_second = output_tokens / elapsed_time if elapsed_time > 0 else 0
 
-        # 正常完成时注销请求ID
+        # 检查SLO
+        slo_met = elapsed_time * 1000 <= experiment.latency_slo  # 转换为毫秒
+
+        # 添加完成日志
+        experiment.logger.debug(f"Client {client_id}: 完成请求 {request_id}, 耗时: {elapsed_time:.3f}s, 输出tokens: {output_tokens}")
+
+        # 取消注册请求ID
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
             experiment.client.unregister_request_id(request_id)
 
-        return output_tokens, elapsed_time, tokens_per_second, ttft, len(
-            input_token), 1 if elapsed_time <= experiment.latency_slo else 0
+        return output_tokens, elapsed_time, tokens_per_second, ttft_ms, input_tokens, 1 if slo_met else 0
 
     except asyncio.TimeoutError:
         end_time = time.time()

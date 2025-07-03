@@ -198,9 +198,7 @@ class BenchmarkClient:
         """使用提供的request ID列表进行abort"""
         aborted_count = 0
         failed_requests = set()
-        
-        self.logger.info(f"Client {self.client_id}: 开始abort {len(request_ids_to_abort)} 个跟踪的请求")
-        
+
         for request_id in request_ids_to_abort:
             try:
                 # 尝试abort

@@ -166,8 +166,31 @@ class BaseExperiment:
     async def calculate_results(self, completed_requests, total_requests):
         """计算实验结果指标"""
         if not self.experiment_results or self.start_time is None or self.end_time is None:
-            print("Cannot calculate results: experiment has not been run")
-            return None
+            self.logger.warning("Experiment has no results or missing timestamps - creating empty result")
+            
+            # 创建一个基础的失败结果，而不是返回None
+            empty_metrics = {
+                'successful_requests': completed_requests,
+                'total_requests': total_requests,
+                'latency': {'p50': 0, 'p95': 0, 'p99': 0, 'avg': 0},
+                'time_to_first_token': {'p50': 0, 'p95': 0, 'p99': 0, 'avg': 0},
+                'tokens_per_second': {'p50': 0, 'p95': 0, 'p99': 0, 'avg': 0},
+                'requests_per_second': 0,
+                'total_input_tokens': 0,
+                'total_output_tokens': 0,
+                'avg_latency_div_standard_latency': 0,
+                'slo_violation_count': total_requests,  # 所有请求都算SLO违规
+                'fairness_ratio': self.client.fairness_ratio if hasattr(self.client, 'fairness_ratio') else 0,
+                'client_id': self.client_id,
+                'experiment_failed': True  # 标记实验失败
+            }
+            
+            # 更新客户端指标
+            self.client.avg_latency_div_standard_latency = 0
+            self.client.slo_violation_count = total_requests
+            self.client.qpm_ratio = 1  # 失败时重置QPS增长率
+            
+            return empty_metrics
 
         self.metrics = calculate_metrics(
             self.concurrency,
