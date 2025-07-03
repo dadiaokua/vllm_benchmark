@@ -31,10 +31,8 @@ class QueueExperiment(BaseExperiment):
 
         # 如果没有提供队列管理器，创建一个新的
         if self.queue_manager is None:
-            self.queue_manager = RequestQueueManager(strategy=queue_strategy)
-            self.queue_manager.set_openai_client(self.openAI_client)
-
-        self.logger.info(f"QueueExperiment initialized with strategy: {queue_strategy.value}")
+            self.logger.error("Queue manager is not provided")
+            raise ValueError("Queue manager is not provided")
 
     async def setup(self):
         """设置实验，进行必要的准备工作"""

@@ -179,13 +179,20 @@ class BenchmarkClient:
         # 检查是否有task_status（来自worker_with_queue）
         if hasattr(self, 'task_status') and self.task_status:
             for task, status_info in self.task_status.items():
-                # 只获取未完成任务的request_id
-                if (status_info.get("status") != "completed" and 
+                # 获取需要abort的请求：running状态或failed状态（failed的请求可能在引擎中仍然活跃）
+                if (status_info.get("status") in ["running", "failed"] and 
                     not task.cancelled() and 
                     "request_id" in status_info):
                     active_request_ids.add(status_info["request_id"])
                     
-            self.logger.debug(f"Client {self.client_id}: 从task_status找到 {len(active_request_ids)} 个未完成请求")
+            # 分别统计不同状态的请求数量，便于调试
+            running_count = sum(1 for _, status in self.task_status.items() if status.get("status") == "running")
+            failed_count = sum(1 for _, status in self.task_status.items() if status.get("status") == "failed")
+            completed_count = sum(1 for _, status in self.task_status.items() if status.get("status") == "completed")
+            cancelled_count = sum(1 for _, status in self.task_status.items() if status.get("status") == "cancelled")
+            
+            self.logger.debug(f"Client {self.client_id}: Task状态统计 - Running: {running_count}, Failed: {failed_count}, Completed: {completed_count}, Cancelled: {cancelled_count}")
+            self.logger.debug(f"Client {self.client_id}: 从task_status找到 {len(active_request_ids)} 个需要abort的请求")
         
         # 如果没有task_status，回退到原有的active_request_ids机制（向后兼容）
         elif self.active_request_ids:

@@ -455,14 +455,23 @@ class RequestQueueManager:
         self.workers_running = False
         
         # 清空队列
+        queue_cleared_count = 0
         while not self.request_queue.empty():
             try:
                 self.request_queue.get_nowait()
+                queue_cleared_count += 1
             except asyncio.QueueEmpty:
                 break
         
         # 清空优先级队列
+        priority_queue_cleared_count = len(self.priority_queue_list)
         self.priority_queue_list.clear()
+        
+        # 记录清空的请求数量
+        total_cleared = queue_cleared_count + priority_queue_cleared_count
+        if total_cleared > 0:
+            self.logger.info(f"Cleared {total_cleared} requests during cleanup "
+                           f"(queue: {queue_cleared_count}, priority: {priority_queue_cleared_count})")
         
         # 重置统计信息
         self.total_requests_processed = 0

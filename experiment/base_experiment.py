@@ -181,6 +181,13 @@ class BaseExperiment:
                 'total_input_tokens': 0,
                 'total_output_tokens': 0,
                 'slo_violations': 0,
+                'slo_violation_count': 0,  # 添加slo_violation_count字段
+                'time': self.end_time if self.end_time else 0,  # 添加time字段
+                'qps': self.qpm,  # 添加qps字段
+                'concurrency': self.concurrency,  # 添加concurrency字段
+                'fairness_ratio': getattr(self.client, 'fairness_ratio', 0),  # 添加fairness_ratio字段
+                'credit': getattr(self.client, 'credit', 0),  # 添加credit字段
+                'client_index': self.client_id,  # 添加client_index字段以解决公平性计算错误
                 'experiment_failed': True,  # 标记实验失败
                 'failure_reason': 'No experiment results or missing timestamps'
             }

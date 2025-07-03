@@ -459,13 +459,31 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
-            return lambda t: task_status.update({
-                task_ref: {
-                    **task_status[task_ref],  # 保留原有信息包括request_id
-                    "status": "completed",
-                    "end_time": time.time()
-                }
-            })
+            def callback(t):
+                if task_ref in task_status:
+                    try:
+                        # 检查task是否成功完成并返回了有效结果
+                        if t.cancelled():
+                            status = "cancelled"
+                        elif t.exception():
+                            status = "failed"
+                        else:
+                            result = t.result()
+                            # 如果process_request返回了有效结果（不是None），标记为真正的completed
+                            # 否则标记为failed，这样abort时可以识别这些失败的请求
+                            status = "completed" if result is not None else "failed"
+                        
+                        task_status[task_ref].update({
+                            "status": status,
+                            "end_time": time.time()
+                        })
+                    except Exception as e:
+                        # 异常情况下标记为failed
+                        task_status[task_ref].update({
+                            "status": "failed",
+                            "end_time": time.time()
+                        })
+            return callback
         
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
@@ -606,13 +624,31 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
-            return lambda t: task_status.update({
-                task_ref: {
-                    **task_status[task_ref],  # 保留原有信息包括request_id
-                    "status": "completed",
-                    "end_time": time.time()
-                }
-            })
+            def callback(t):
+                if task_ref in task_status:
+                    try:
+                        # 检查task是否成功完成并返回了有效结果
+                        if t.cancelled():
+                            status = "cancelled"
+                        elif t.exception():
+                            status = "failed"
+                        else:
+                            result = t.result()
+                            # 如果process_request返回了有效结果（不是None），标记为真正的completed
+                            # 否则标记为failed，这样abort时可以识别这些失败的请求
+                            status = "completed" if result is not None else "failed"
+                        
+                        task_status[task_ref].update({
+                            "status": status,
+                            "end_time": time.time()
+                        })
+                    except Exception as e:
+                        # 异常情况下标记为failed
+                        task_status[task_ref].update({
+                            "status": "failed",
+                            "end_time": time.time()
+                        })
+            return callback
         
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
