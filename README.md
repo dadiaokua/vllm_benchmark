@@ -71,20 +71,6 @@ The easiest way to run benchmarks is using the provided bash script:
 ./start_vllm_benchmark.sh -e LFS --exp QUEUE_LFS -e VTC
 ```
 
-### Available Experiment Types
-
-| Experiment Type | Description |
-|----------------|-------------|
-| `LFS` | Least Fair Share - Direct scheduling |
-| `VTC` | Virtual Time Credits - Direct scheduling |
-| `FCFS` | First Come First Serve - Direct scheduling |
-| `QUEUE_LFS` | Queue-based LFS scheduling |
-| `QUEUE_VTC` | Queue-based VTC scheduling |
-| `QUEUE_FCFS` | Queue-based FCFS scheduling |
-| `QUEUE_ROUND_ROBIN` | Queue-based Round Robin scheduling |
-| `QUEUE_SJF` | Queue-based Shortest Job First |
-| `QUEUE_FAIR` | Queue-based Fair Share scheduling |
-
 ### Getting Help
 
 ```bash
@@ -96,23 +82,6 @@ The easiest way to run benchmarks is using the provided bash script:
 ## Configuration
 
 The bash script (`start_vllm_benchmark.sh`) contains pre-configured parameters that you can modify:
-
-### vLLM Engine Parameters
-- Model path and tensor parallel configuration
-- GPU memory utilization and sequence limits
-- Data type and quantization settings
-
-### Client Configuration
-- Short clients: 7 clients with QPS range 50-150
-- Long clients: 3 clients with QPS around 50-80
-- SLO (Service Level Objectives) settings
-
-### Experiment Settings
-- 20 rounds per experiment
-- 300 seconds per round
-- Configurable through script variables
-
-## Advanced Usage
 
 ### Manual Python Execution
 
@@ -155,8 +124,7 @@ python run_benchmarks.py \
   --model_path "/home/llm/model_hub/Qwen2.5-32B-Instruct" \
   --tensor_parallel_size 8 \
   --gpu_memory_utilization 0.9 \
-  --vllm_url "http://127.0.0.1:8000" \  # Still needed for compatibility, but not used for requests
-  --api_key "test" \
+  --vllm_url "http://127.0.0.1:8000"  # Still needed for compatibility, but not used for requests
   # ... other benchmark parameters
 ```
 
@@ -174,8 +142,7 @@ Uses an external vLLM HTTP server via OpenAI-compatible API:
 # First start vLLM server separately (or use --start_engine False if already running)
 python run_benchmarks.py \
   --start_engine False \
-  --vllm_url "http://existing-server:8000" \
-  --api_key "test" \
+  --vllm_url "http://existing-server:8000"
   # ... other benchmark parameters
 ```
 
