@@ -404,6 +404,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     assert worker_json is not None, "sample_content is None!"
     assert isinstance(worker_json, list), f"sample_content is not a list! type={type(worker_json)}"
     assert len(worker_json) > 0, "sample_content is empty!"
+
     global_start_time = time.time()
     request_count = 0
     drift_time = 0
@@ -414,9 +415,11 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     # 创建线程安全的token计数器
     tokens_counter = ThreadSafeCounter()
 
+    # 获取客户端ID用于日志
+    client_id = getattr(experiment.client, 'client_id', f'unknown_client_worker_{worker_id}')
+
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(experiment, qmp_per_worker)
-    client_id = f"{experiment.client_id}_worker_{worker_id}"
 
     for target_time in request_times:
         if time.time() - global_start_time >= experiment.round_time:
@@ -433,28 +436,27 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
                 await asyncio.sleep(sleep_time)
             else:
                 experiment.logger.warning(
-                    f"[{client_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
+                    f"Client {client_id}: Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
                 continue
 
         # 发送请求（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
         selected_client = selected_clients[worker_id % len(selected_clients)]
-
+        
         # 生成request_id并在创建task时就集成
-        request_id = str(uuid.uuid4())
-
+        request_id = f"{client_id}_{str(uuid.uuid4())}"
+        
         task = asyncio.create_task(
-            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter,
-                            request_id)
+            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter, request_id)
         )
-
+        
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(),
+            "start_time": time.time(), 
             "status": "running"
         }
-
+        
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             return lambda t: task_status.update({
@@ -464,7 +466,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
                     "end_time": time.time()
                 }
             })
-
+        
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -474,10 +476,10 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
     if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:
         if remaining_time > (experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 2):
             experiment.logger.warning(
-                f"[{client_id}] Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
+                f"Client {client_id}: Warning: Not enough requests to fill the round time. Sleeping for {remaining_time:.2f} seconds")
         await asyncio.sleep(remaining_time)
     else:
-        experiment.logger.info(f"[{client_id}] reached the end of the round time.")
+        experiment.logger.info(f"Client {client_id}: reached the end of the round time.")
 
     # 将task_status存储到experiment中，供abort使用
     if hasattr(experiment, 'client'):
@@ -494,11 +496,12 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
 
-        experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
-        experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
-        experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
+        experiment.logger.info(f"Client {client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
+        experiment.logger.info(f"Client {client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(f"Client {client_id} Worker {worker_id}: Total tokens processed: {tokens_counter.value}")
         experiment.logger.info(
-            f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+            f"Client {client_id} Worker {worker_id}: Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+
         for task in tasks:
             task.cancel()
 
@@ -555,9 +558,12 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
     # 移除直接注册，submit_request会自动处理
     # await queue_manager.register_client(client_id, experiment.client.client_type)
 
+    # 获取客户端ID用于日志
+    main_client_id = getattr(experiment.client, 'client_id', 'unknown_client')
+
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(experiment, qmp_per_worker)
-
+    
     for target_time in request_times:
         if time.time() - global_start_time >= experiment.round_time:
             break
@@ -573,7 +579,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
                 await asyncio.sleep(sleep_time)
             else:
                 experiment.logger.warning(
-                    f"[{client_id}] Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
+                    f"Client {main_client_id}: Warning: Negative sleep time detected: {sleep_time:.6f} seconds")
                 continue
 
         # 发送请求到队列（不管是否需要sleep，都会执行到这里）
@@ -581,23 +587,23 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
         # 设置优先级（短请求优先级更高）
         priority = experiment.client.priority
-
+        
         # 生成request_id并在创建task时就集成
-        request_id = str(uuid.uuid4())
-
+        request_id = f"{main_client_id}_{str(uuid.uuid4())}"
+        
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request,
                                        worker_id, results, semaphore, tokens_counter,
                                        priority, request_id)
         )
-
+        
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(),
+            "start_time": time.time(), 
             "status": "running"
         }
-
+        
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             return lambda t: task_status.update({
@@ -607,7 +613,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
                     "end_time": time.time()
                 }
             })
-
+        
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -617,7 +623,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
     if remaining_time > experiment.round_time * GLOBAL_CONFIG.get('buffer_ratio', 0.5) * 1.1:  # 只在剩余时间大于3秒时才sleep，防止误差
         await asyncio.sleep(remaining_time)
     else:
-        experiment.logger.info(f"[{client_id}] reached the end of the round time.")
+        experiment.logger.info(f"Client {main_client_id}: reached the end of the round time.")
 
     # 将task_status存储到experiment中，供abort使用
     if hasattr(experiment, 'client'):
@@ -633,11 +639,11 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
 
-        experiment.logger.info(f"Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
-        experiment.logger.info(f"Task completion rate: {completed / len(tasks) * 100:.2f}%")
-        experiment.logger.info(f"Total tokens processed: {tokens_counter.value}")
+        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
+        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Total tokens processed: {tokens_counter.value}")
         experiment.logger.info(
-            f"Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
+            f"Client {main_client_id} Worker {worker_id}: Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
 
         for task in tasks:
             task.cancel()
