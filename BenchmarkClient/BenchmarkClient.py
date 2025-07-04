@@ -96,7 +96,9 @@ class BenchmarkClient:
         
         # 使用全局配置中的时间戳
         timestamp = GLOBAL_CONFIG.get("monitor_file_time", "default")
-        log_file = os.path.join(log_dir, f"client_{self.client_id.split('_')[0]}_{timestamp}.log")
+        
+        # 在文件名中加入实验类型
+        log_file = os.path.join(log_dir, f"client_{self.client_id.split('_')[0]}_{self.exp_type}_{timestamp}.log")
 
         logger = logging.getLogger(f"client_{self.client_id}")
         logger.setLevel(logging.DEBUG)  # 将logger的级别设置为DEBUG
