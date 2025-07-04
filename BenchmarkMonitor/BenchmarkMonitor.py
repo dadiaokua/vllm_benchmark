@@ -11,6 +11,47 @@ from config.Config import GLOBAL_CONFIG
 from util.FileSaveUtil import save_results
 from util.MathUtil import fairness_result, is_fairness_LFSLLM, is_fairness_VTC, is_fairness_FCFS
 
+def timing_decorator(func):
+    """装饰器：用于测量函数执行时间"""
+    @wraps(func)
+    async def async_wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = await func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # 获取实例的timing_stats
+        self = args[0]
+        if not hasattr(self, 'timing_stats'):
+            self.timing_stats = {}
+        if func.__name__ not in self.timing_stats:
+            self.timing_stats[func.__name__] = []
+        self.timing_stats[func.__name__].append(execution_time)
+        
+        return result
+
+    @wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        execution_time = end_time - start_time
+        
+        # 获取实例的timing_stats
+        self = args[0]
+        if not hasattr(self, 'timing_stats'):
+            self.timing_stats = {}
+        if func.__name__ not in self.timing_stats:
+            self.timing_stats[func.__name__] = []
+        self.timing_stats[func.__name__].append(execution_time)
+        
+        return result
+
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    else:
+        return sync_wrapper
+
 class ExperimentMonitor:
     """
     实验监控器类，负责监控实验结果、计算公平性并触发资源调整
@@ -296,44 +337,3 @@ class ExperimentMonitor:
 
         # 同时写入日志
         self.logger.info('\n'.join(output))
-
-def timing_decorator(func):
-    """装饰器：用于测量函数执行时间"""
-    @wraps(func)
-    async def async_wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = await func(*args, **kwargs)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        
-        # 获取实例的timing_stats
-        self = args[0]
-        if not hasattr(self, 'timing_stats'):
-            self.timing_stats = {}
-        if func.__name__ not in self.timing_stats:
-            self.timing_stats[func.__name__] = []
-        self.timing_stats[func.__name__].append(execution_time)
-        
-        return result
-
-    @wraps(func)
-    def sync_wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        execution_time = end_time - start_time
-        
-        # 获取实例的timing_stats
-        self = args[0]
-        if not hasattr(self, 'timing_stats'):
-            self.timing_stats = {}
-        if func.__name__ not in self.timing_stats:
-            self.timing_stats[func.__name__] = []
-        self.timing_stats[func.__name__].append(execution_time)
-        
-        return result
-
-    if asyncio.iscoroutinefunction(func):
-        return async_wrapper
-    else:
-        return sync_wrapper
