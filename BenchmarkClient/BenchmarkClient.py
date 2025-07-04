@@ -99,16 +99,16 @@ class BenchmarkClient:
         log_file = os.path.join(log_dir, f"client_{self.client_id.split('_')[0]}_{timestamp}.log")
 
         logger = logging.getLogger(f"client_{self.client_id}")
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)  # 将logger的级别设置为DEBUG
         if not logger.handlers:
             fh = logging.FileHandler(log_file, encoding="utf-8", mode="a")  # 改回追加模式
-            fh.setLevel(logging.INFO)
+            fh.setLevel(logging.DEBUG)  # 将文件处理器的级别也设置为DEBUG
             formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
             fh.setFormatter(formatter)
             logger.addHandler(fh)
             # 控制台输出
             ch = logging.StreamHandler()
-            ch.setLevel(logging.INFO)
+            ch.setLevel(logging.DEBUG)  # 将控制台处理器的级别设置为DEBUG
             ch.setFormatter(formatter)
             logger.addHandler(ch)
 
@@ -134,11 +134,11 @@ class BenchmarkClient:
         # 从task_status中获取未完成的request_id
         active_request_ids = self._get_active_request_ids_from_tasks()
         
-        # # 如果有队列管理器，也从队列中获取活跃的request_id
-        # if self.queue_manager:
-        #     queue_request_ids = self.queue_manager.get_active_request_ids(self.client_id)
-        #     active_request_ids.update(queue_request_ids)
-        #     self.logger.debug(f"Client {self.client_id}: 从队列管理器找到 {len(queue_request_ids)} 个队列中的请求")
+        # 如果有队列管理器，也从队列中获取活跃的request_id
+        if self.queue_manager:
+            queue_request_ids = self.queue_manager.get_active_request_ids(self.client_id)
+            active_request_ids.update(queue_request_ids)
+            self.logger.debug(f"Client {self.client_id}: 从队列管理器找到 {len(queue_request_ids)} 个队列中的请求")
 
         if not active_request_ids:
             self.logger.debug(f"Client {self.client_id}: 没有活跃的请求需要abort")
