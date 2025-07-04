@@ -589,7 +589,7 @@ def plot_result(plot_data):
         all_results = json.load(f)
 
     # Load fairness results and create third figure
-    fairness_file_path = f"tmp_result/tmp_fairness_result_{GLOBAL_CONFIG.get('monitor_file_time')}.json"
+    fairness_file_path = f"tmp_result/tmp_fairness_result_{plot_data['exp']}_{GLOBAL_CONFIG.get('monitor_file_time')}.json"
     try:
         with open(fairness_file_path, 'r') as f:
             fairness_results = json.load(f)

@@ -282,9 +282,6 @@ class BenchmarkClient:
             
             await self.result_queue.put(1)
 
-            # Give monitor time to process
-            await asyncio.sleep(1)
-
             # Wait between runs
             await asyncio.sleep(self.sleep)
 
