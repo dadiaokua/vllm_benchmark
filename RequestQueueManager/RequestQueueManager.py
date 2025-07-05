@@ -171,24 +171,26 @@ class RequestQueueManager:
         
         try:
             if self.strategy == QueueStrategy.PRIORITY:
-                # 部分优先级策略：根据优先级往前插入几个位置
-                if priority > 0:
-                    insert_positions = min(priority * self.priority_insert_multiplier, self.max_priority_positions)
-                    # 确定插入位置
-                    if len(self.priority_queue_list) == 0:
-                        # 队列为空，直接添加
-                        self.priority_queue_list.append(request)
-                        insert_pos = 0
-                    else:
-                        # 计算插入位置：从队列末尾往前数insert_positions个位置
-                        current_queue_size = len(self.priority_queue_list)
-                        insert_pos = max(0, current_queue_size - insert_positions)
-                        
-                        # 插入到计算出的位置
-                        self.priority_queue_list.insert(insert_pos, request)
-                else:
+                # 修改部分优先级策略：数字越小的优先级越高，插入位置越靠前
+                # 注意：负数优先级表示更高的优先级，0表示默认优先级，正数表示较低的优先级
+                # 确定插入位置
+                if len(self.priority_queue_list) == 0:
+                    # 队列为空，直接添加
                     self.priority_queue_list.append(request)
-                    insert_pos = len(self.priority_queue_list) - 1
+                    insert_pos = 0
+                else:
+                    # 遍历队列找到合适的插入位置
+                    # 找到第一个优先级值大于当前请求的位置
+                    insert_pos = 0
+                    for i, queued_req in enumerate(self.priority_queue_list):
+                        if queued_req.priority > request.priority:
+                            insert_pos = i
+                            break
+                        else:
+                            insert_pos = i + 1  # 如果没找到，插入到末尾
+                    
+                    # 插入到计算出的位置
+                    self.priority_queue_list.insert(insert_pos, request)
                 
                 self.logger.debug(f"Added request to priority queue: {client_id} (request_id: {request_id}, priority: {priority}, inserted at position: {insert_pos}/{len(self.priority_queue_list)})")
             else:
@@ -334,7 +336,8 @@ class RequestQueueManager:
                 experiment=request.experiment,
                 request=request.request_content,
                 start_time=request.start_time,
-                request_id=request.request_id  # 传递request_id
+                request_id=request.request_id,  # 传递request_id
+                priority=request.priority
             )
             
             if result is None:

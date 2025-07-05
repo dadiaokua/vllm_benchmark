@@ -27,7 +27,7 @@ async def process_stream(stream):
     return first_token_time, total_tokens
 
 
-async def make_request(client, experiment, request, start_time=None, request_id=None):
+async def make_request(client, experiment, request, start_time=None, request_id=None, priority=None):
     """
     发送请求 - 自动检测使用直接引擎还是HTTP客户端
     """
@@ -35,13 +35,13 @@ async def make_request(client, experiment, request, start_time=None, request_id=
     if 'vllm_engine' in GLOBAL_CONFIG and GLOBAL_CONFIG['vllm_engine'] is not None:
         # 使用直接引擎API
         return await make_request_direct_engine(GLOBAL_CONFIG['vllm_engine'], experiment, request, start_time,
-                                                request_id)
+                                                request_id, priority)
     else:
         # 使用HTTP客户端（原有方式）
         return await make_request_http_client(client, experiment, request, start_time, request_id)
 
 
-async def make_request_direct_engine(engine, experiment, request, start_time=None, request_id=None):
+async def make_request_direct_engine(engine, experiment, request, start_time=None, request_id=None, priority=None):
     """
     直接使用AsyncLLMEngine处理请求
     
@@ -54,6 +54,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         
     Returns:
         tuple: (output_tokens, elapsed_time, tokens_per_second, ttft, input_tokens, slo_met)
+        :param priority:
     """
     if start_time is None:
         start_time = time.time()
@@ -67,7 +68,7 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         # 注册请求ID到实验的客户端（如果可用）
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'register_request_id'):
             experiment.client.register_request_id(request_id)
-        
+
         # 添加调试日志
         client_id = getattr(experiment.client, 'client_id', 'unknown_client')
         experiment.logger.debug(f"Client {client_id}: 开始处理请求 {request_id}")
@@ -80,24 +81,24 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         )
 
         # 发送请求到引擎 - 注意这里返回的是异步生成器
-        request_generator = engine.generate(request, sampling_params, request_id)
-        
+        request_generator = engine.generate(request, sampling_params, request_id, priority=priority)
+
         # 使用async for迭代异步生成器获取最终结果
         request_output = None
         first_chunk_time = None
-        
+
         async for output_chunk in request_generator:
             if first_chunk_time is None:
                 first_chunk_time = time.time()
             request_output = output_chunk  # 保留最后一个输出作为最终结果
-        
+
         end_time = time.time()
-        
+
         # 计算首个token时间 (TTFT)
         ttft_ms = None
         if first_chunk_time:
             ttft_ms = (first_chunk_time - start_time) * 1000  # 转换为毫秒
-        
+
         # 如果没有获取到任何输出，返回None
         if request_output is None:
             experiment.logger.warning(f"Client {client_id}: 请求 {request_id} 没有返回任何输出")
@@ -109,12 +110,12 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         output_text = ""
         input_tokens = 0
         output_tokens = 0
-        
+
         if hasattr(request_output, 'outputs') and request_output.outputs:
             output = request_output.outputs[0]
             output_text = output.text
             output_tokens = len(output.token_ids) if hasattr(output, 'token_ids') else 0
-            
+
         # 获取输入token数（如果可用）
         if hasattr(request_output, 'prompt_token_ids'):
             input_tokens = len(request_output.prompt_token_ids)
@@ -128,7 +129,8 @@ async def make_request_direct_engine(engine, experiment, request, start_time=Non
         slo_met = elapsed_time * 1000 <= experiment.latency_slo  # 转换为毫秒
 
         # 添加完成日志
-        experiment.logger.debug(f"Client {client_id}: 完成请求 {request_id}, 耗时: {elapsed_time:.3f}s, 输出tokens: {output_tokens}")
+        experiment.logger.debug(
+            f"Client {client_id}: 完成请求 {request_id}, 耗时: {elapsed_time:.3f}s, 输出tokens: {output_tokens}")
 
         # 取消注册请求ID
         if hasattr(experiment, 'client') and hasattr(experiment.client, 'unregister_request_id'):
@@ -287,7 +289,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
     # 估算总请求数，基于完整的round_time，而不是effective_round_time
     # 这样即使有buffer time，我们仍然会发送完整的请求数量
     estimated_requests = int(round_time * rate_per_second)
-    
+
     # 移除随机变化
     # random_variation = random.uniform(0.9, 1.1)
     # estimated_requests = int(estimated_requests * random_variation)
@@ -329,7 +331,7 @@ def calculate_all_request_times(experiment, qmp_per_worker):
 
         # 应用压缩比例，将请求间隔压缩
         compressed_interval = interval * compression_ratio
-        
+
         current_offset += compressed_interval
         if current_offset > effective_round_time:  # 确保不超出有效时间窗口
             break
@@ -342,7 +344,8 @@ def calculate_all_request_times(experiment, qmp_per_worker):
         request_times.append(request_time)
 
     # 记录生成的请求数量
-    experiment.logger.info(f"Generated {len(request_times)} requests for QPM {qmp_per_worker} in {effective_round_time:.1f}s effective window (buffer: {buffer_time:.1f}s)")
+    experiment.logger.info(
+        f"Generated {len(request_times)} requests for QPM {qmp_per_worker} in {effective_round_time:.1f}s effective window (buffer: {buffer_time:.1f}s)")
 
     return request_times
 
@@ -452,21 +455,22 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         # 发送请求（不管是否需要sleep，都会执行到这里）
         request = random.choice(worker_json)
         selected_client = selected_clients[worker_id % len(selected_clients)]
-        
+
         # 生成request_id并在创建task时就集成
         request_id = f"{client_id}_{str(uuid.uuid4())}"
-        
+
         task = asyncio.create_task(
-            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter, request_id)
+            process_request(selected_client, experiment, request, worker_id, results, semaphore, tokens_counter,
+                            request_id)
         )
-        
+
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(), 
+            "start_time": time.time(),
             "status": "running"
         }
-        
+
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             def callback(t):
@@ -482,7 +486,7 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
                             # 如果process_request返回了有效结果（不是None），标记为真正的completed
                             # 否则标记为failed，这样abort时可以识别这些失败的请求
                             status = "completed" if result is not None else "failed"
-                        
+
                         task_status[task_ref].update({
                             "status": status,
                             "end_time": time.time()
@@ -493,8 +497,9 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
                             "status": "failed",
                             "end_time": time.time()
                         })
+
             return callback
-        
+
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -524,8 +529,10 @@ async def worker(experiment, selected_clients, semaphore, results, worker_id, wo
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
 
-        experiment.logger.info(f"Client {client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
-        experiment.logger.info(f"Client {client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(
+            f"Client {client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
+        experiment.logger.info(
+            f"Client {client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
         experiment.logger.info(f"Client {client_id} Worker {worker_id}: Total tokens processed: {tokens_counter.value}")
         experiment.logger.info(
             f"Client {client_id} Worker {worker_id}: Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
@@ -591,7 +598,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
     # 预先计算所有请求的时间点
     request_times = calculate_all_request_times(experiment, qmp_per_worker)
-    
+
     for target_time in request_times:
         if time.time() - global_start_time >= experiment.round_time:
             break
@@ -615,23 +622,23 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
 
         # 设置优先级（短请求优先级更高）
         priority = experiment.client.priority
-        
+
         # 生成request_id并在创建task时就集成
         request_id = f"{main_client_id}_{str(uuid.uuid4())}"
-        
+
         task = asyncio.create_task(
             process_request_with_queue(queue_manager, client_id, experiment, request,
                                        worker_id, results, semaphore, tokens_counter,
                                        priority, request_id)
         )
-        
+
         # 在task_status中存储request_id和其他信息
         task_status[task] = {
             "request_id": request_id,
-            "start_time": time.time(), 
+            "start_time": time.time(),
             "status": "running"
         }
-        
+
         # 更新done回调以正确更新状态
         def make_done_callback(task_ref):
             def callback(t):
@@ -647,7 +654,7 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
                             # 如果process_request返回了有效结果（不是None），标记为真正的completed
                             # 否则标记为failed，这样abort时可以识别这些失败的请求
                             status = "completed" if result is not None else "failed"
-                        
+
                         task_status[task_ref].update({
                             "status": status,
                             "end_time": time.time()
@@ -658,8 +665,9 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
                             "status": "failed",
                             "end_time": time.time()
                         })
+
             return callback
-        
+
         task.add_done_callback(make_done_callback(task))
         tasks.append(task)
         request_count += 1
@@ -685,9 +693,12 @@ async def worker_with_queue(experiment, queue_manager, semaphore, results, worke
         completed = sum(1 for status in task_status.values() if status["status"] == "completed")
         cancelled_count = sum(1 for task in tasks if task.cancelled())
 
-        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
-        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
-        experiment.logger.info(f"Client {main_client_id} Worker {worker_id}: Total tokens processed: {tokens_counter.value}")
+        experiment.logger.info(
+            f"Client {main_client_id} Worker {worker_id}: Total tasks: {request_count}, Completed: {completed}, Cancelled: {cancelled_count}")
+        experiment.logger.info(
+            f"Client {main_client_id} Worker {worker_id}: Task completion rate: {completed / len(tasks) * 100:.2f}%")
+        experiment.logger.info(
+            f"Client {main_client_id} Worker {worker_id}: Total tokens processed: {tokens_counter.value}")
         experiment.logger.info(
             f"Client {main_client_id} Worker {worker_id}: Total elapsed time: {total_elapsed_time:.2f} seconds, Round time: {experiment.round_time:.2f} seconds, More than round time: {total_elapsed_time - experiment.round_time:.2f} seconds")
 

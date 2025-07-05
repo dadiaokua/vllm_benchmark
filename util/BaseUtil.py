@@ -130,9 +130,16 @@ def adjust_resources(client_low_fairness_ratio, client_high_fairness_ratio, delt
     # min_active_ratio = GLOBAL_CONFIG.get("MIN_ACTIVE_RATIO", 0.1)
     # client_low_fairness_ratio.active_ratio = max(client_low_fairness_ratio.active_ratio - delta, min_active_ratio)
     # client_high_fairness_ratio.active_ratio = min(client_high_fairness_ratio.active_ratio + delta, 1)
+    
+    # 修改优先级调整逻辑：数字越小优先级越高
+    # 注意：负数优先级表示更高的优先级，0表示默认优先级，正数表示较低的优先级
     priority_changes = int(delta * 10)
-    client_high_fairness_ratio.priority = client_high_fairness_ratio.priority + priority_changes
-    client_low_fairness_ratio.priority = client_low_fairness_ratio.priority - priority_changes
+    
+    # 公平性高的客户端应该获得更高优先级（更小的数字，可以为负数），帮助它降低fairness ratio
+    client_high_fairness_ratio.priority = client_high_fairness_ratio.priority - priority_changes
+    
+    # 公平性低的客户端应该获得更低优先级（更大的数字）
+    client_low_fairness_ratio.priority = client_low_fairness_ratio.priority + priority_changes
 
 
 def update_credits_and_counters(client1, client2, delta):

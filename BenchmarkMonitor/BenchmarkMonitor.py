@@ -90,9 +90,9 @@ class ExperimentMonitor:
         # 设置公平性调整策略映射
         self.fairness_strategies = {
             "LFS": is_fairness_LFSLLM,
-            "VTC": is_fairness_VTC,
+            # "VTC": is_fairness_VTC,
             "QUEUE_LFS": is_fairness_LFSLLM,
-            "QUEUE_VTC": is_fairness_VTC,
+            # "QUEUE_VTC": is_fairness_VTC,
         }
 
     def _setup_logger(self):
